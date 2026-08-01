@@ -1,0 +1,738 @@
+<!doctype html>
+<html>
+  <head>
+    <base target="_top">
+    <meta charset="utf-8">
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: Inter, Arial, sans-serif;
+        color: #111113;
+        background: #f6f6f7;
+      }
+
+      * { box-sizing: border-box; }
+
+      html,
+      body {
+        width: 100%;
+        min-width: 0;
+        overflow-x: hidden;
+      }
+
+      body {
+        margin: 0;
+        padding: 18px;
+        background: #f6f6f7;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 20px;
+        line-height: 1.2;
+        letter-spacing: -0.4px;
+      }
+
+      h2 {
+        margin: 0;
+        font-size: 14px;
+      }
+
+      p {
+        margin: 5px 0 0;
+        color: #65656a;
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        margin-bottom: 16px;
+      }
+
+      .mark {
+        width: 42px;
+        height: 42px;
+        display: grid;
+        place-items: center;
+        border-radius: 14px;
+        color: #fff;
+        background: #111113;
+        font-weight: 900;
+      }
+
+      .card {
+        padding: 15px;
+        margin-bottom: 12px;
+        border: 1px solid #d8d8dc;
+        border-radius: 16px;
+        background: #fff;
+      }
+
+      .field { margin-top: 12px; }
+
+      .field-help {
+        min-height: 18px;
+        margin-top: 6px;
+        color: #65656a;
+        font-size: 11px;
+        line-height: 1.4;
+      }
+
+      .field-help.ready {
+        color: #0b6b2a;
+        font-weight: 700;
+      }
+
+      label {
+        display: block;
+        margin-bottom: 6px;
+        color: #333336;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.35px;
+        text-transform: uppercase;
+      }
+
+      select,
+      input[type="file"],
+      input[type="number"],
+      input[type="text"] {
+        width: 100%;
+        max-width: 100%;
+        min-height: 42px;
+        padding: 9px 10px;
+        border: 1px solid #c9c9cd;
+        border-radius: 11px;
+        color: #111113;
+        background: #fff;
+        font: inherit;
+        font-size: 13px;
+      }
+
+      input[type="file"] { padding: 8px; }
+
+      .setup-panel {
+        padding: 12px;
+        margin-top: 10px;
+        border: 1px solid #d6d6da;
+        border-radius: 12px;
+        background: #f7f7f8;
+      }
+
+      .setup-panel[hidden] { display: none; }
+
+      .setup-panel p { margin-top: 0; }
+
+      .setup-grid {
+        display: grid;
+        grid-template-columns: 110px minmax(0, 1fr);
+        gap: 8px;
+        margin-top: 10px;
+      }
+
+      button {
+        min-height: 44px;
+        width: 100%;
+        padding: 10px 14px;
+        border: 0;
+        border-radius: 12px;
+        color: #fff;
+        background: #111113;
+        font-size: 13px;
+        font-weight: 800;
+        cursor: pointer;
+        touch-action: manipulation;
+      }
+
+      button.secondary {
+        color: #111113;
+        border: 1px solid #c9c9cd;
+        background: #fff;
+      }
+
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.6;
+      }
+
+      .actions {
+        display: grid;
+        gap: 8px;
+        margin-top: 14px;
+      }
+
+      .notice {
+        padding: 10px 11px;
+        border-radius: 11px;
+        color: #37373a;
+        background: #eeeeef;
+        font-size: 11px;
+        line-height: 1.45;
+      }
+
+      .status {
+        display: none;
+        padding: 12px;
+        margin-bottom: 12px;
+        border-radius: 12px;
+        font-size: 12px;
+        line-height: 1.45;
+        white-space: pre-wrap;
+      }
+
+      .status.visible { display: block; }
+      .status.info { color: #29292c; background: #e9e9eb; }
+      .status.success { color: #0b4620; background: #dff5e6; }
+      .status.error { color: #761d1d; background: #fde5e5; }
+
+      .preview {
+        display: grid;
+        gap: 8px;
+        margin-top: 10px;
+      }
+
+      .preview-item {
+        padding: 10px;
+        border: 1px solid #dfdfe2;
+        border-radius: 10px;
+        background: #fafafa;
+      }
+
+      .preview-item strong {
+        display: block;
+        margin-bottom: 3px;
+        font-size: 11px;
+      }
+
+      .preview-item span {
+        color: #4d4d51;
+        font-size: 11px;
+        line-height: 1.4;
+      }
+
+      .spinner {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        margin-right: 7px;
+        border: 2px solid currentColor;
+        border-right-color: transparent;
+        border-radius: 50%;
+        animation: spin 0.7s linear infinite;
+        vertical-align: -2px;
+      }
+
+      @keyframes spin { to { transform: rotate(360deg); } }
+
+      @media (max-width: 420px) {
+        body { padding: 12px; }
+        .card { padding: 12px; border-radius: 13px; }
+        h1 { font-size: 18px; }
+        select,
+        input[type="file"],
+        input[type="number"],
+        input[type="text"],
+        button { font-size: 14px; }
+        .setup-grid { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="brand">
+      <div class="mark">Z</div>
+      <div>
+        <h1>Content Manager</h1>
+        <p>One workspace for every Grade 9–12 subject.</p>
+      </div>
+    </div>
+
+    <div id="status" class="status"></div>
+
+    <div class="card">
+      <h2>1. Choose the destination</h2>
+      <form id="importForm" novalidate>
+        <div class="field">
+          <label for="subjectId">Subject</label>
+          <select id="subjectId" name="subjectId" disabled>
+            <option value="">Loading subjects…</option>
+          </select>
+          <div class="actions">
+            <button id="toggleSubjectSetupButton" class="secondary" type="button">Add another subject</button>
+          </div>
+          <div id="subjectSetup" class="setup-panel" hidden>
+            <p>Add a subject once, then use it for every future unit upload.</p>
+            <div class="setup-grid">
+              <select id="newSubjectGrade">
+                <option value="9">Grade 9</option>
+                <option value="10">Grade 10</option>
+                <option value="11">Grade 11</option>
+                <option value="12">Grade 12</option>
+              </select>
+              <select id="newSubjectStream">
+                <option value="">No stream / shared</option>
+                <option value="Natural">Natural</option>
+                <option value="Social">Social</option>
+              </select>
+            </div>
+            <div class="field">
+              <input id="newSubjectName" type="text" maxlength="200" placeholder="Subject name, for example Chemistry">
+            </div>
+            <div class="actions">
+              <button id="createSubjectButton" class="secondary" type="button">Create subject</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="unitId">Existing unit (optional)</label>
+          <select id="unitId" name="unitId" disabled>
+            <option value="">Select a subject first</option>
+          </select>
+          <div id="selectionHint" class="field-help">
+            Select a subject and CSV file. The importer can read unitNumber and unitTitle from the file.
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="csvFile">UTF-8 CSV file</label>
+          <input id="csvFile" name="csvFile" type="file" accept=".csv,text/csv">
+        </div>
+
+        <div class="actions">
+          <button id="importButton" type="submit" disabled>Import as Draft</button>
+          <button id="templateButton" class="secondary" type="button">Download CSV template</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>2. Review before publishing</h2>
+      <p>Open the subject spreadsheet and inspect the imported Draft rows. Students cannot see Draft questions.</p>
+      <div class="actions">
+        <button id="publishButton" type="button" disabled>Publish selected unit</button>
+      </div>
+    </div>
+
+    <div class="notice">
+      Required columns: question, optionA, optionB, optionC, optionD,
+      correctAnswer, explanation. Optional columns: externalId, topic,
+      difficulty, sourceReference. Add <strong>unitNumber</strong> and
+      <strong>unitTitle</strong> to create or match the unit automatically.
+      Equations may use <strong>$...$</strong> and <strong>$$...$$</strong>.
+    </div>
+
+    <div id="preview" class="preview"></div>
+
+    <script>
+      var subjectSelect = document.getElementById('subjectId');
+      var unitSelect = document.getElementById('unitId');
+      var fileInput = document.getElementById('csvFile');
+      var importButton = document.getElementById('importButton');
+      var publishButton = document.getElementById('publishButton');
+      var statusBox = document.getElementById('status');
+      var previewBox = document.getElementById('preview');
+      var selectionHint = document.getElementById('selectionHint');
+      var subjectSetup = document.getElementById('subjectSetup');
+      var toggleSubjectSetupButton = document.getElementById('toggleSubjectSetupButton');
+      var newSubjectGrade = document.getElementById('newSubjectGrade');
+      var newSubjectStream = document.getElementById('newSubjectStream');
+      var newSubjectName = document.getElementById('newSubjectName');
+      var createSubjectButton = document.getElementById('createSubjectButton');
+      var actionBusy = false;
+      var subjectsLoading = true;
+      var unitsLoading = false;
+      var unitRequestNumber = 0;
+      var previewRequestNumber = 0;
+
+      function setStatus(message, tone, loading) {
+        statusBox.className = 'status visible ' + (tone || 'info');
+        statusBox.textContent = '';
+        if (loading) {
+          var spinner = document.createElement('span');
+          spinner.className = 'spinner';
+          statusBox.appendChild(spinner);
+        }
+        statusBox.appendChild(document.createTextNode(message));
+      }
+
+      function clearStatus() {
+        statusBox.className = 'status';
+        statusBox.textContent = '';
+      }
+
+      function selectedSubjectOption() {
+        return subjectSelect.selectedIndex >= 0
+          ? subjectSelect.options[subjectSelect.selectedIndex]
+          : null;
+      }
+
+      function selectedSubjectIsProvisioned() {
+        var option = selectedSubjectOption();
+        return Boolean(option && option.value && option.getAttribute('data-provisioned') === 'true');
+      }
+
+      function updateControls() {
+        var provisioned = selectedSubjectIsProvisioned();
+        subjectSelect.disabled = subjectsLoading || actionBusy;
+        unitSelect.disabled = unitsLoading || actionBusy || !subjectSelect.value || !provisioned;
+        fileInput.disabled = actionBusy;
+        importButton.disabled = actionBusy;
+        publishButton.disabled = actionBusy;
+        toggleSubjectSetupButton.disabled = actionBusy;
+        newSubjectGrade.disabled = actionBusy;
+        newSubjectStream.disabled = actionBusy;
+        newSubjectName.disabled = actionBusy;
+        createSubjectButton.disabled = actionBusy;
+        importButton.textContent = actionBusy ? 'Working...' : 'Import as Draft';
+      }
+
+      function refreshSelectionState() {
+        var selectedUnit = unitSelect.options[unitSelect.selectedIndex];
+        var selectedFile = fileInput.files.length ? fileInput.files[0] : null;
+        selectionHint.className = 'field-help';
+
+        if (!subjectSelect.value) {
+          selectionHint.textContent = 'Select a subject first.';
+        } else if (!selectedSubjectIsProvisioned()) {
+          selectionHint.textContent = selectedFile
+            ? 'Ready. The subject file and CSV unit will be created automatically.'
+            : 'Choose a CSV file. The subject file and CSV unit will be created automatically.';
+        } else if (!unitSelect.value) {
+          selectionHint.textContent = selectedFile
+            ? 'Ready. The importer will match or create the CSV unit automatically.'
+            : 'Choose a CSV file with unitNumber and unitTitle, or select an existing unit.';
+        } else if (!selectedFile) {
+          selectionHint.textContent = (selectedUnit ? selectedUnit.textContent : 'Unit selected')
+            + ' selected. Now choose a UTF-8 CSV file.';
+        } else {
+          selectionHint.className = 'field-help ready';
+          selectionHint.textContent = 'Ready: ' + selectedFile.name + ' will be imported into '
+            + selectedUnit.textContent + ' as Draft.';
+        }
+
+        updateControls();
+      }
+
+      function handleFailure(error) {
+        subjectsLoading = false;
+        unitsLoading = false;
+        actionBusy = false;
+        updateControls();
+        setStatus(error && error.message ? error.message : 'The operation failed.', 'error');
+      }
+
+      function previewSelectedFile() {
+        refreshSelectionState();
+        var requestNumber = ++previewRequestNumber;
+        if (!fileInput.files.length) {
+          clearStatus();
+          return;
+        }
+        setStatus('Checking the CSV structure and questions...', 'info', true);
+        google.script.run
+          .withSuccessHandler(function (result) {
+            if (requestNumber !== previewRequestNumber) return;
+            if (!result.ok) {
+              setStatus(
+                'The CSV has ' + result.errorCount + ' problem(s):\n\n'
+                  + result.errors.join('\n'),
+                'error'
+              );
+              return;
+            }
+            var unitText = result.unit
+              ? 'Unit ' + result.unit.number + ': ' + result.unit.title
+              : 'Select an existing unit';
+            setStatus(
+              result.questionRows + ' valid questions detected.\n'
+                + unitText + '\n'
+                + 'Answers: A ' + result.answerCounts.A
+                + ', B ' + result.answerCounts.B
+                + ', C ' + result.answerCounts.C
+                + ', D ' + result.answerCounts.D + '.',
+              'success'
+            );
+          })
+          .withFailureHandler(function (error) {
+            if (requestNumber !== previewRequestNumber) return;
+            handleFailure(error);
+          })
+          .previewQuestionCsv(document.getElementById('importForm'));
+      }
+
+      function loadBootstrap() {
+        subjectsLoading = true;
+        updateControls();
+        setStatus('Loading provisioned subjects…', 'info', true);
+        google.script.run
+          .withSuccessHandler(function (result) {
+            subjectSelect.textContent = '';
+            var placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = 'Select a subject';
+            subjectSelect.appendChild(placeholder);
+
+            result.subjects.forEach(function (subject) {
+              var option = document.createElement('option');
+              option.value = subject.id;
+              option.setAttribute('data-provisioned', subject.provisioned ? 'true' : 'false');
+              option.textContent = 'Grade ' + subject.grade
+                + (subject.stream ? ' · ' + subject.stream : '')
+                + ' · ' + subject.name
+                + (subject.provisioned ? '' : ' — setup required');
+              subjectSelect.appendChild(option);
+            });
+            subjectsLoading = false;
+            clearStatus();
+            refreshSelectionState();
+          })
+          .withFailureHandler(handleFailure)
+          .getQuestionImporterBootstrap();
+      }
+
+      function loadUnits(preselectUnitId, successMessage) {
+        var requestedSubjectId = subjectSelect.value;
+        var requestNumber = ++unitRequestNumber;
+        previewBox.textContent = '';
+        unitSelect.textContent = '';
+        if (!requestedSubjectId) {
+          unitsLoading = false;
+          var empty = document.createElement('option');
+          empty.value = '';
+          empty.textContent = 'Select a subject first';
+          unitSelect.appendChild(empty);
+          refreshSelectionState();
+          return;
+        }
+        if (!selectedSubjectIsProvisioned()) {
+          unitsLoading = false;
+          var setupRequired = document.createElement('option');
+          setupRequired.value = '';
+          setupRequired.textContent = 'Unit will be read from the CSV';
+          unitSelect.appendChild(setupRequired);
+          clearStatus();
+          refreshSelectionState();
+          return;
+        }
+        unitsLoading = true;
+        updateControls();
+        setStatus('Loading units…', 'info', true);
+        google.script.run
+          .withSuccessHandler(function (units) {
+            if (requestNumber !== unitRequestNumber || subjectSelect.value !== requestedSubjectId) return;
+            unitsLoading = false;
+            unitSelect.textContent = '';
+            var placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = units.length ? 'Select a unit' : 'No units found';
+            unitSelect.appendChild(placeholder);
+            units.forEach(function (unit) {
+              var option = document.createElement('option');
+              option.value = unit.id;
+              option.textContent = 'Unit ' + unit.number + ' · ' + unit.title
+                + ' · ' + unit.questionCount + ' active';
+              unitSelect.appendChild(option);
+            });
+            if (preselectUnitId) unitSelect.value = preselectUnitId;
+            if (successMessage) setStatus(successMessage, 'success');
+            else clearStatus();
+            refreshSelectionState();
+          })
+          .withFailureHandler(function (error) {
+            if (requestNumber !== unitRequestNumber) return;
+            handleFailure(error);
+          })
+          .getQuestionImporterUnits(requestedSubjectId);
+      }
+
+      function renderPreview(items) {
+        previewBox.textContent = '';
+        items.forEach(function (item) {
+          var card = document.createElement('div');
+          card.className = 'preview-item';
+          var title = document.createElement('strong');
+          title.textContent = (item.externalId || 'Generated ID')
+            + (item.topic ? ' · ' + item.topic : '')
+            + ' · Answer ' + item.correctAnswer;
+          var text = document.createElement('span');
+          text.textContent = item.question;
+          card.appendChild(title);
+          card.appendChild(text);
+          previewBox.appendChild(card);
+        });
+      }
+
+      document.getElementById('importForm').addEventListener('submit', function (event) {
+        event.preventDefault();
+        if (actionBusy) {
+          setStatus('Please wait for the current operation to finish.', 'info');
+          return;
+        }
+        if (!subjectSelect.value || !fileInput.files.length) {
+          var missing = [];
+          if (!subjectSelect.value) missing.push('subject');
+          if (!fileInput.files.length) missing.push('CSV file');
+          setStatus('Before importing, choose: ' + missing.join(', ') + '.', 'error');
+          return;
+        }
+        actionBusy = true;
+        updateControls();
+        setStatus('Validating and importing the CSV as Draft…', 'info', true);
+        google.script.run
+          .withSuccessHandler(function (result) {
+            actionBusy = false;
+            updateControls();
+            if (!result.ok) {
+              setStatus(
+                'Nothing was imported. ' + result.errorCount + ' error(s):\n\n' + result.errors.join('\n'),
+                'error'
+              );
+              return;
+            }
+            setStatus(
+              result.importedRows + ' questions imported as Draft.\n'
+                + 'Unit ' + result.unit.number + ': ' + result.unit.title
+                + (result.unit.created ? ' was created automatically.\n' : ' was matched automatically.\n')
+                + 'Answer balance: A ' + result.answerCounts.A
+                + ', B ' + result.answerCounts.B
+                + ', C ' + result.answerCounts.C
+                + ', D ' + result.answerCounts.D
+                + '.\nReview the subject sheet before publishing.',
+              'success'
+            );
+            renderPreview(result.preview || []);
+            fileInput.value = '';
+            var option = selectedSubjectOption();
+            option.setAttribute('data-provisioned', 'true');
+            option.textContent = option.textContent.replace(' — setup required', '');
+            loadUnits(
+              result.unit.id,
+              result.importedRows + ' questions imported as Draft into Unit '
+                + result.unit.number + ': ' + result.unit.title + '.'
+            );
+          })
+          .withFailureHandler(handleFailure)
+          .importQuestionCsv(document.getElementById('importForm'));
+      });
+
+      publishButton.addEventListener('click', function () {
+        if (actionBusy) {
+          setStatus('Please wait for the current operation to finish.', 'info');
+          return;
+        }
+        if (subjectSelect.value && !selectedSubjectIsProvisioned()) {
+          setStatus('Prepare the selected subject before publishing questions.', 'error');
+          return;
+        }
+        if (!subjectSelect.value || !unitSelect.value) {
+          setStatus('Select a subject and unit before publishing.', 'error');
+          return;
+        }
+        if (!confirm('Publish every valid Draft question in this unit? Students will be able to load them immediately.')) return;
+        actionBusy = true;
+        updateControls();
+        setStatus('Validating and publishing the selected unit…', 'info', true);
+        google.script.run
+          .withSuccessHandler(function (result) {
+            actionBusy = false;
+            updateControls();
+            if (!result.ok) {
+              setStatus(
+                'Nothing was published. ' + result.errorCount + ' error(s):\n\n' + result.errors.join('\n'),
+                'error'
+              );
+              return;
+            }
+              setStatus(
+                result.publishedQuestions + ' questions are active. '
+                + result.newlyPublished + ' changed from Draft. Unit version: ' + result.version + '. '
+                + (result.announcementCreated
+                  ? 'A student announcement was created automatically.'
+                  : 'The announcement for this unit version already exists.')
+                + (result.announcement
+                  ? '\nAnnouncement ID: ' + result.announcement.id
+                    + '\nAudience: Grade ' + result.announcement.grade
+                    + (result.announcement.stream ? ' / ' + result.announcement.stream : '')
+                  : ''),
+                'success'
+              );
+            loadUnits();
+          })
+          .withFailureHandler(handleFailure)
+          .publishUnitQuestions(subjectSelect.value, unitSelect.value);
+      });
+
+      toggleSubjectSetupButton.addEventListener('click', function () {
+        subjectSetup.hidden = !subjectSetup.hidden;
+        toggleSubjectSetupButton.textContent = subjectSetup.hidden
+          ? 'Add another subject'
+          : 'Hide new subject form';
+      });
+
+      createSubjectButton.addEventListener('click', function () {
+        if (actionBusy) return;
+        var name = newSubjectName.value.trim();
+        if (!name) {
+          setStatus('Enter the subject name.', 'error');
+          newSubjectName.focus();
+          return;
+        }
+        actionBusy = true;
+        updateControls();
+        setStatus('Creating and preparing the new subject...', 'info', true);
+        google.script.run
+          .withSuccessHandler(function (subject) {
+            actionBusy = false;
+            var option = document.createElement('option');
+            option.value = subject.id;
+            option.setAttribute('data-provisioned', 'true');
+            option.textContent = 'Grade ' + subject.grade
+              + (subject.stream ? ' · ' + subject.stream : '')
+              + ' · ' + subject.name;
+            subjectSelect.appendChild(option);
+            subjectSelect.value = subject.id;
+            newSubjectName.value = '';
+            subjectSetup.hidden = true;
+            toggleSubjectSetupButton.textContent = 'Add another subject';
+            loadUnits('', 'Subject created. Choose a CSV file to add its first unit.');
+          })
+          .withFailureHandler(handleFailure)
+          .createQuestionImporterSubject({
+            grade: Number(newSubjectGrade.value),
+            stream: newSubjectStream.value,
+            name: name
+          });
+      });
+
+      document.getElementById('templateButton').addEventListener('click', function () {
+        var rows = [
+          ['grade', 'stream', 'subjectName', 'externalId', 'unitNumber', 'unitTitle', 'topic', 'question', 'optionA', 'optionB', 'optionC', 'optionD', 'correctAnswer', 'explanation', 'difficulty', 'sourceReference'],
+          ['9', '', 'Physics', 'PHY-G9-U1-001', '1', 'Unit title', 'Motion', 'A body follows $v = u + at$. What does $a$ represent?', 'Distance', 'Acceleration', 'Time', 'Velocity', 'B', '$a$ represents acceleration.', 'medium', 'Unit 1, page 5']
+        ];
+        var csv = rows.map(function (row) {
+          return row.map(function (cell) {
+            return '"' + String(cell).replace(/"/g, '""') + '"';
+          }).join(',');
+        }).join('\r\n');
+        var blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+        var url = URL.createObjectURL(blob);
+        var link = document.createElement('a');
+        link.href = url;
+        link.download = 'Zemen_Academy_Question_Import_Template.csv';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+      });
+
+      subjectSelect.addEventListener('change', function () { loadUnits(); });
+      unitSelect.addEventListener('change', refreshSelectionState);
+      fileInput.addEventListener('change', previewSelectedFile);
+
+      loadBootstrap();
+    </script>
+  </body>
+</html>

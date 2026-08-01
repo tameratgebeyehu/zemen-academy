@@ -1,0 +1,52 @@
+{
+  "expo": {
+    "name": "Zemen Academy",
+    "slug": "zemen-academy",
+    "version": "1.0.0",
+    "icon": "./assets/zemen-academy-logo.png",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "scheme": "zemenacademy",
+    "plugins": [
+      "expo-notifications",
+      "expo-secure-store",
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/zemen-academy-logo.png",
+          "imageWidth": 260,
+          "resizeMode": "contain",
+          "backgroundColor": "#FFFFFF",
+          "dark": {
+            "image": "./assets/zemen-academy-logo.png",
+            "backgroundColor": "#FFFFFF"
+          }
+        }
+      ]
+    ],
+    "android": {
+      "package": "com.zemenacademy.app",
+      "googleServicesFile": "./google-services.json",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/zemen-academy-logo.png",
+        "backgroundColor": "#FFFFFF"
+      },
+      "allowBackup": false,
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "POST_NOTIFICATIONS"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/zemen-academy-logo.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "8e582961-79e4-4c0f-9962-c5c63d6aeb77"
+      }
+    },
+    "owner": "tamerat"
+  }
+}

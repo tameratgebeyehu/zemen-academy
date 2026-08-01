@@ -1,0 +1,57 @@
+{
+  "name": "zemen-academy",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.ts",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "typecheck": "tsc --noEmit",
+    "test": "jest --runInBand",
+    "test:watch": "jest --watch",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@expo/vector-icons": "^15.1.1",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native-community/netinfo": "^12.0.1",
+    "@react-navigation/bottom-tabs": "^7.18.10",
+    "@react-navigation/native": "^7.3.10",
+    "@react-navigation/native-stack": "^7.18.2",
+    "expo": "~57.0.7",
+    "expo-clipboard": "~57.0.1",
+    "expo-constants": "~57.0.8",
+    "expo-crypto": "~57.0.1",
+    "expo-dev-client": "~57.0.10",
+    "expo-device": "~57.0.1",
+    "expo-font": "~57.0.1",
+    "expo-notifications": "~57.0.6",
+    "expo-screen-capture": "~57.0.1",
+    "expo-secure-store": "~57.0.1",
+    "expo-splash-screen": "~57.0.5",
+    "expo-status-bar": "~57.0.1",
+    "katex": "0.17.0",
+    "react": "19.2.3",
+    "react-native": "0.86.2",
+    "react-native-gesture-handler": "~2.32.0",
+    "react-native-paper": "^5.15.3",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-screens": "~4.26.0",
+    "react-native-webview": "13.16.1"
+  },
+  "devDependencies": {
+    "@react-native/jest-preset": "0.86.2",
+    "@types/jest": "29.5.14",
+    "@types/react": "~19.2.2",
+    "babel-preset-expo": "~57.0.3",
+    "jest": "29.7.0",
+    "jest-expo": "~57.0.3",
+    "typescript": "~6.0.3"
+  },
+  "jest": {
+    "preset": "jest-expo",
+    "testMatch": [
+      "**/__tests__/**/*.test.ts"
+    ]
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "657107851197",
+    "project_id": "zemen-academy-et",
+    "storage_bucket": "zemen-academy-et.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:657107851197:android:efbb7e5f67047ce8e824d4",
+        "android_client_info": {
+          "package_name": "com.zemenacademy.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAEIkCInr-ilyCcsZT8HpfVjPDnA-5INwI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
