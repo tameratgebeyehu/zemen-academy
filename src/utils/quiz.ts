@@ -40,7 +40,36 @@ export function scoreForAttempt(attempt: QuizAttempt): QuizScore {
 }
 
 export function formatDuration(totalSeconds: number): string {
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = Math.max(0, totalSeconds % 60);
+  const safeSeconds = Math.max(0, Math.floor(totalSeconds));
+  const hours = Math.floor(safeSeconds / 3600);
+  const minutes = Math.floor((safeSeconds % 3600) / 60);
+  const seconds = safeSeconds % 60;
+  if (hours > 0) {
+    return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  }
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+}
+
+export function formatDurationWords(totalSeconds: number): string {
+  const totalMinutes = Math.max(0, Math.ceil(totalSeconds / 60));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  const parts: string[] = [];
+  if (hours) parts.push(`${hours} ${hours === 1 ? 'hour' : 'hours'}`);
+  if (minutes || !hours) parts.push(`${minutes} ${minutes === 1 ? 'minute' : 'minutes'}`);
+  return parts.join(' ');
+}
+
+export function quizDurationSeconds(questionCount: number): number {
+  return Math.max(1, Math.floor(Number(questionCount) || 0)) * 60;
+}
+
+export function steadyNowMs(): number {
+  const monotonic = globalThis.performance?.now?.();
+  return Number.isFinite(monotonic) ? Number(monotonic) : Date.now();
+}
+
+export function countdownSeconds(deadlineMs: number, nowMs = Date.now()): number {
+  if (!Number.isFinite(deadlineMs) || !Number.isFinite(nowMs)) return 0;
+  return Math.max(0, Math.ceil((deadlineMs - nowMs) / 1000));
 }

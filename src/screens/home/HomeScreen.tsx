@@ -1,7 +1,7 @@
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useMemo, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Badge, Button, Card, Icon, IconButton, Modal, Portal, ProgressBar, Searchbar, Snackbar, Text, useTheme } from 'react-native-paper';
 
 import { IconTile, PressableScale, Reveal, type IconTone } from '@/components/Motion';
@@ -9,6 +9,7 @@ import { Screen, SectionTitle } from '@/components/Screen';
 import { useApp } from '@/context/AppContext';
 import { heroPalette, ui } from '@/data/theme';
 import type { RootStackParamList } from '@/navigation/types';
+import { selectContinueLearning } from '@/utils/continueLearning';
 import { scoreForAttempt } from '@/utils/quiz';
 import { attemptsCompletedThisWeek, attemptsCompletedToday, normalizeDailyQuizGoal } from '@/utils/studyGoal';
 import { userFacingError } from '@/utils/userFacingError';
@@ -22,19 +23,41 @@ export function HomeScreen() {
     dismissAnnouncementNotice,
     dismissWelcomeAnimation,
     updateDailyQuizGoal,
-    t,
   } = useApp();
   const theme = useTheme();
+  const { width: windowWidth } = useWindowDimensions();
+  const wideExploreGrid = windowWidth >= 700;
   const hero = heroPalette(theme.dark);
   const [goalEditorVisible, setGoalEditorVisible] = useState(false);
   const [goalDraft, setGoalDraft] = useState(() => normalizeDailyQuizGoal(state.preferences.dailyQuizGoal));
   const [goalSaving, setGoalSaving] = useState(false);
   const [goalError, setGoalError] = useState('');
-  const recentDownload = state.unitDownloads[0];
-  const recentAttempt = state.attempts[0];
+  const continueSelection = useMemo(() => selectContinueLearning({
+    grade: state.preferences.grade,
+    stream: state.preferences.stream,
+    subjects: state.catalog.subjects,
+    units: state.catalog.units,
+    attempts: state.attempts,
+    downloads: state.unitDownloads,
+    lastViewedSubjectId: state.lastViewedSubjectId,
+    lastViewedUnitId: state.lastViewedUnitId,
+  }), [
+    state.attempts,
+    state.catalog.subjects,
+    state.catalog.units,
+    state.lastViewedSubjectId,
+    state.lastViewedUnitId,
+    state.preferences.grade,
+    state.preferences.stream,
+    state.unitDownloads,
+  ]);
+  const continueUnit = continueSelection.unit;
+  const continueSubject = continueSelection.subject;
+  const continueAttempt = continueSelection.attempt;
+  const hasLearningHistory = continueSelection.hasHistory;
   const recentScore = useMemo(
-    () => recentAttempt ? scoreForAttempt(recentAttempt) : null,
-    [recentAttempt],
+    () => continueAttempt ? scoreForAttempt(continueAttempt) : null,
+    [continueAttempt],
   );
   const firstName = (state.user?.name ?? 'Student').trim().split(/\s+/)[0] || 'Student';
   const stream = state.preferences.grade >= 11 ? ` • ${state.preferences.stream}` : '';
@@ -45,29 +68,9 @@ export function HomeScreen() {
   const attemptsThisWeek = useMemo(() => attemptsCompletedThisWeek(state.attempts), [state.attempts]);
   const goalProgress = Math.min(attemptsToday / dailyGoal, 1);
   const quizzesRemaining = Math.max(dailyGoal - attemptsToday, 0);
-  const continueUnit = useMemo(() => (
-    state.catalog.units.find((unit) => unit.id === state.lastViewedUnitId)
-    ?? state.catalog.units.find((unit) => unit.id === recentAttempt?.unitId)
-    ?? recentDownload?.unit
-  ), [recentAttempt?.unitId, recentDownload?.unit, state.catalog.units, state.lastViewedUnitId]);
-  const continueSubject = useMemo(() => (
-    state.catalog.subjects.find((subject) => subject.id === continueUnit?.subjectId)
-    ?? state.catalog.subjects.find((subject) => subject.id === state.lastViewedSubjectId)
-    ?? recentDownload?.subject
-    ?? subjects[0]
-  ), [continueUnit?.subjectId, recentDownload?.subject, state.catalog.subjects, state.lastViewedSubjectId, subjects]);
-  const continueAttempt = continueUnit
-    ? state.attempts.find((attempt) => attempt.unitId === continueUnit.id)
-    : undefined;
   const continueScore = continueAttempt
     ? scoreForAttempt(continueAttempt)
     : null;
-  const hasLearningHistory = Boolean(
-    state.lastViewedSubjectId
-    || state.lastViewedUnitId
-    || recentAttempt
-    || recentDownload,
-  );
   const unreadAnnouncements = useMemo(() => {
     const readIds = new Set(state.readAnnouncementIds);
     return state.announcements.filter((item) => !readIds.has(item.id)).length;
@@ -139,7 +142,7 @@ export function HomeScreen() {
       </View>
 
       <Searchbar
-        placeholder="Search subjects, units, or papers"
+        placeholder="Search subjects or quiz units"
         value=""
         onChangeText={() => undefined}
         onPressIn={() => navigation.navigate('Search')}
@@ -216,10 +219,10 @@ export function HomeScreen() {
         <Text variant="bodySmall" style={styles.muted}>{subjects.length} subjects available</Text>
       </View>
       <View style={styles.quickGrid}>
-        <QuickButton tone="primary" icon="clipboard-text-outline" label={t('quizzes')} detail="Practice now" onPress={() => navigation.navigate('Main', { screen: 'QuizzesTab' })} />
-        <QuickButton tone="tertiary" icon="file-document-outline" label={t('pastPapers')} detail="Exam archive" onPress={() => navigation.navigate('PastPapers')} />
-        <QuickButton tone="warm" icon="download-outline" label={t('downloads')} detail="Study offline" onPress={() => navigation.navigate('Main', { screen: 'DownloadsTab' })} />
-        <QuickButton tone="success" icon="chart-box-outline" label="Progress" detail={recentScore ? `Last score ${recentScore.percentage}%` : 'Start a quiz'} onPress={() => navigation.navigate('Progress')} />
+        <QuickButton wide={wideExploreGrid} tone="primary" icon="clipboard-text-outline" label="Quizzes" detail="Practice by subject" onPress={() => navigation.navigate('Main', { screen: 'QuizzesTab' })} />
+        <QuickButton wide={wideExploreGrid} tone="secondary" icon="calendar-clock-outline" label="Timetable" detail="Plan your week" onPress={() => navigation.navigate('Timetable')} />
+        <QuickButton wide={wideExploreGrid} tone="warm" icon="notebook-outline" label="Notes" detail="Revision library" onPress={() => navigation.navigate('Notes')} />
+        <QuickButton wide={wideExploreGrid} tone="success" icon="chart-box-outline" label="Progress" detail={recentScore ? `Last score ${recentScore.percentage}%` : 'Start a quiz'} onPress={() => navigation.navigate('Progress')} />
       </View>
 
       <Portal>
@@ -326,7 +329,7 @@ export function HomeScreen() {
           <Reveal distance={18}>
             <Card mode="elevated" style={[styles.welcomeModal, { backgroundColor: theme.colors.surface }]}>
               <Card.Content style={styles.welcomeModalContent}>
-                <View style={[styles.welcomeIcon, { backgroundColor: theme.colors.primary }]}> 
+                <View style={[styles.welcomeIcon, { backgroundColor: theme.colors.primary }]}>
                   <Icon source="school" size={36} color={theme.colors.onPrimary} />
                 </View>
                 <Text variant="headlineSmall" style={styles.welcomeTitle}>Welcome, {firstName}!</Text>
@@ -347,8 +350,10 @@ export function HomeScreen() {
           action={{
             label: 'View',
             onPress: () => {
+              const announcementId = announcementNotice?.id;
               dismissAnnouncementNotice();
-              navigation.navigate('Announcements');
+              if (announcementId) navigation.navigate('AnnouncementDetail', { announcementId });
+              else navigation.navigate('Announcements');
             },
           }}
         >
@@ -359,15 +364,29 @@ export function HomeScreen() {
   );
 }
 
-function QuickButton({ icon, label, detail, tone, onPress }: { icon: string; label: string; detail: string; tone: IconTone; onPress: () => void }) {
+function QuickButton({ icon, label, detail, tone, wide, onPress }: {
+  icon: string;
+  label: string;
+  detail: string;
+  tone: IconTone;
+  wide: boolean;
+  onPress: () => void;
+}) {
   const theme = useTheme();
   return (
-    <PressableScale onPress={onPress} accessibilityLabel={label} style={styles.quickCard}>
+    <PressableScale onPress={onPress} accessibilityLabel={label} style={[styles.quickCard, wide && styles.quickCardWide]}>
       <Card mode="outlined" style={[styles.quickCardSurface, theme.dark ? ui.shadow.dark : ui.shadow.light, { backgroundColor: theme.colors.surface }]}>
         <Card.Content style={styles.quickContent}>
-          <IconTile source={icon} size={23} tone={tone} style={styles.quickIcon} />
-          <Text variant="titleSmall" style={styles.bold} numberOfLines={1}>{label}</Text>
-          <Text variant="bodySmall" style={styles.muted} numberOfLines={1}>{detail}</Text>
+          <View style={styles.quickTop}>
+            <IconTile source={icon} size={25} tone={tone} style={styles.quickIcon} />
+            <View style={[styles.quickArrow, { backgroundColor: theme.colors.surfaceVariant }]}>
+              <Icon source="arrow-top-right" size={17} color={theme.colors.primary} />
+            </View>
+          </View>
+          <View style={styles.quickCopy}>
+            <Text variant="titleMedium" style={styles.quickTitle} numberOfLines={1}>{label}</Text>
+            <Text variant="bodySmall" style={styles.muted} numberOfLines={2}>{detail}</Text>
+          </View>
         </Card.Content>
       </Card>
     </PressableScale>
@@ -405,11 +424,16 @@ const styles = StyleSheet.create({
   continueTitle: { fontWeight: '900', letterSpacing: -0.2 },
   continueArrow: { width: 38, height: 38, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
   sectionHeader: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' },
-  quickGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  quickCard: { width: '48%', flexGrow: 1 },
-  quickCardSurface: { borderRadius: ui.radius.md },
-  quickContent: { minHeight: 126, justifyContent: 'center', gap: 5 },
-  quickIcon: { width: 42, height: 42, borderRadius: 14, marginBottom: 5 },
+  quickGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 10 },
+  quickCard: { width: '48%', minWidth: 0 },
+  quickCardWide: { width: '23.5%' },
+  quickCardSurface: { width: '100%', borderRadius: ui.radius.md },
+  quickContent: { minHeight: 132, justifyContent: 'space-between', gap: 14, paddingHorizontal: 15, paddingVertical: 15 },
+  quickTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 },
+  quickCopy: { minWidth: 0, gap: 3 },
+  quickTitle: { fontWeight: '900', letterSpacing: -0.25 },
+  quickIcon: { width: 48, height: 48, borderRadius: 16 },
+  quickArrow: { width: 30, height: 30, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   goalModalWrap: { width: '100%', maxWidth: 460, paddingHorizontal: 18, alignSelf: 'center' },
   goalModal: { borderRadius: ui.radius.lg, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
   goalModalContent: { gap: 16, paddingHorizontal: 20, paddingVertical: 20 },

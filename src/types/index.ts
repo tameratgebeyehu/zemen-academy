@@ -8,6 +8,7 @@ export type PremiumStatus = 'free' | 'active' | 'expired' | 'legacy' | 'revoked'
 export type DeviceCategory = 'phone' | 'tablet' | 'unknown';
 export type MobilePlatform = 'android' | 'ios';
 export type ContentAccessTier = 'free' | 'premium';
+export type QuizContentType = 'unit' | 'past-paper';
 
 export interface PremiumEntitlement {
   isPremium: boolean;
@@ -90,7 +91,7 @@ export interface DevicePolicyObservation {
   wouldExceedPolicy: boolean;
   accessAllowed: boolean;
   currentDeviceStatus: 'active' | 'blocked' | 'revoked';
-  blockedReason: 'device-limit' | 'device-linked' | null;
+  blockedReason: 'device-limit' | 'device-linked' | 'device-released' | null;
   canReplace: boolean;
   replacementAvailableAt: string | null;
   conflictingDeviceName: string | null;
@@ -167,20 +168,48 @@ export interface UnitDownload {
 export interface PastPaper {
   id: string;
   title: string;
-  grade: Grade;
+  grade?: Grade;
   stream?: Stream;
   subjectId: string;
+  subjectName?: string;
+  subjectIcon?: string;
   year: number;
   version: number;
+  questionCount?: number;
   accessTier?: ContentAccessTier;
   content?: string;
   downloadUrl?: string;
   updatedAt: string;
 }
 
+export interface StudyNote {
+  id: string;
+  grade: Grade;
+  stream?: Stream;
+  subjectId: string;
+  unitId?: string;
+  title: string;
+  titleAm: string;
+  summary: string;
+  summaryAm: string;
+  body?: string;
+  bodyAm?: string;
+  version: number;
+  accessTier: ContentAccessTier;
+  updatedAt: string;
+}
+
+export interface NoteDownload {
+  note: StudyNote;
+  downloadedAt: string;
+  byteSize: number;
+}
+
 export interface PaperDownload {
   paper: PastPaper;
-  content: string;
+  questions: Question[];
+  /** Kept only so an older on-device document download can be migrated safely. */
+  content?: string;
   downloadedAt: string;
   byteSize: number;
 }
@@ -192,6 +221,9 @@ export interface Announcement {
   publishedAt: string;
   kind?: 'academy' | 'welcome';
   ownerUserId?: string;
+  actionType?: 'quiz' | 'quizzes' | 'notes' | 'past-papers' | 'premium';
+  targetId?: string;
+  actionLabel?: string;
 }
 
 export interface CatalogCache {
@@ -231,6 +263,7 @@ export interface QuestionReport {
 export interface QuizAttempt {
   id: string;
   unitId: string;
+  contentType?: QuizContentType;
   mode: QuizMode;
   questions: Question[];
   answers: Array<AnswerIndex | null>;
@@ -248,8 +281,10 @@ export interface PersistedState {
   hasSeenIntro: boolean;
   profileReady: boolean;
   user: User | null;
+  localDataOwnerId?: string;
   preferences: Preferences;
   unitDownloads: UnitDownload[];
+  noteDownloads: NoteDownload[];
   paperDownloads: PaperDownload[];
   attempts: QuizAttempt[];
   pendingQuestionReports: QuestionReport[];

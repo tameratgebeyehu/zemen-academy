@@ -5,6 +5,7 @@ import { Card, Icon, Searchbar, Text, useTheme } from 'react-native-paper';
 
 import { IconTile, PressableScale } from '@/components/Motion';
 import { EmptyState, Screen, SectionTitle } from '@/components/Screen';
+import { V1_PAST_PAPERS_ENABLED } from '@/config';
 import { useApp } from '@/context/AppContext';
 import { ui } from '@/data/theme';
 import type { RootStackParamList } from '@/navigation/types';
@@ -18,13 +19,15 @@ export function SearchScreen({ navigation }: Props) {
   const subjectResults = useMemo(() => normalized ? subjects.filter((item) => `${item.name} ${item.nameAm}`.toLowerCase().includes(normalized)) : [], [normalized, subjects]);
   const unitResults = useMemo(() => normalized ? subjects.flatMap((subject) => unitsForSubject(subject.id).map((unit) => ({ unit, subject })))
     .filter(({ unit, subject }) => `${subject.name} ${unit.title}`.toLowerCase().includes(normalized)) : [], [normalized, subjects, unitsForSubject]);
-  const paperResults = useMemo(() => normalized ? state.catalog.pastPapers.filter((paper) => paper.grade === state.preferences.grade && paper.title.toLowerCase().includes(normalized)) : [], [normalized, state.catalog.pastPapers, state.preferences.grade]);
+  const paperResults = useMemo(() => V1_PAST_PAPERS_ENABLED && normalized
+    ? state.catalog.pastPapers.filter((paper) => paper.grade === state.preferences.grade && paper.title.toLowerCase().includes(normalized))
+    : [], [normalized, state.catalog.pastPapers, state.preferences.grade]);
   const noResults = normalized && !subjectResults.length && !unitResults.length && !paperResults.length;
 
   return (
     <Screen>
       <Searchbar autoFocus placeholder={t('search')} value={query} onChangeText={setQuery} />
-      {!normalized ? <EmptyState icon="magnify" title="Search Zemen Academy" body="Find a subject, unit, or past paper by title." /> : null}
+      {!normalized ? <EmptyState icon="magnify" title="Search Zemen Academy" body="Find a subject or quiz unit by title." /> : null}
       {subjectResults.length ? <SectionTitle>{t('subjects')}</SectionTitle> : null}
       {subjectResults.map((subject) => (
         <SearchResult key={subject.id} icon={subject.icon} title={subject.name} description={`Grade ${subject.grade}`} onPress={() => navigation.navigate('Units', { subjectId: subject.id })} />

@@ -1,4 +1,4 @@
-import type { DeviceCategory } from '@/types';
+import type { DeviceCategory, DevicePolicyObservation } from '@/types';
 
 export function deviceCategoryFromExpoType(value: number | null | undefined): DeviceCategory {
   if (value === 1) return 'phone';
@@ -26,4 +26,10 @@ export function devicePolicyRequiresAttention(
 ): boolean {
   if (isGuest) return false;
   return registeredUserId !== userId || !observation || observation.accessAllowed === false;
+}
+
+export function devicePolicyRevokesLocalContent(
+  observation: Pick<DevicePolicyObservation, 'currentDeviceStatus' | 'blockedReason'>,
+): boolean {
+  return observation.currentDeviceStatus === 'revoked' || observation.blockedReason === 'device-released';
 }

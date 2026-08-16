@@ -1,25 +1,34 @@
-import { useState } from 'react';
+import FontAwesome6 from '@expo/vector-icons/FontAwesome6';
+import { useState, type ComponentProps } from 'react';
 import { Linking, StyleSheet, View } from 'react-native';
 import { Button, Card, Icon, Snackbar, Text, useTheme } from 'react-native-paper';
 
 import { Screen, SectionTitle } from '@/components/Screen';
 import { APP_VERSION, CONTACTS } from '@/config';
+import { openExternalBrowser } from '@/utils/externalBrowser';
 
 const channels = [
-  { label: 'Telegram', icon: 'send-outline', url: CONTACTS.telegram },
-  { label: 'TikTok', icon: 'music-note-outline', url: CONTACTS.tiktok },
-  { label: 'Instagram', icon: 'instagram', url: CONTACTS.instagram },
-  { label: 'YouTube', icon: 'youtube', url: CONTACTS.youtube },
-  { label: 'Email', icon: 'email-outline', url: `mailto:${CONTACTS.email}` },
-] as const;
+  { label: 'Website', icon: 'globe', url: CONTACTS.website, browser: true },
+  { label: 'Telegram', icon: 'telegram', url: CONTACTS.telegram, browser: false },
+  { label: 'TikTok', icon: 'tiktok', url: CONTACTS.tiktok, browser: false },
+  { label: 'Instagram', icon: 'instagram', url: CONTACTS.instagram, browser: false },
+  { label: 'YouTube', icon: 'youtube', url: CONTACTS.youtube, browser: false },
+  { label: 'Email', icon: 'envelope', url: `mailto:${CONTACTS.email}`, browser: false },
+] satisfies ReadonlyArray<{
+  label: string;
+  icon: ComponentProps<typeof FontAwesome6>['name'];
+  url: string;
+  browser?: boolean;
+}>;
 
 export function AboutScreen() {
   const theme = useTheme();
   const [message, setMessage] = useState('');
 
-  const open = async (url: string, label: string) => {
+  const open = async (url: string, label: string, browser = false) => {
     try {
-      await Linking.openURL(url);
+      if (browser) await openExternalBrowser(url);
+      else await Linking.openURL(url);
     } catch {
       setMessage(`${label} could not be opened on this device.`);
     }
@@ -51,11 +60,11 @@ export function AboutScreen() {
           <Button
             key={channel.label}
             mode="outlined"
-            icon={channel.icon}
+            icon={({ color, size }) => <FontAwesome6 name={channel.icon} size={size - 1} color={color} />}
             style={[styles.channelButton, index === channels.length - 1 && styles.channelButtonWide]}
             contentStyle={styles.channelContent}
             labelStyle={styles.channelLabel}
-            onPress={() => void open(channel.url, channel.label)}
+            onPress={() => void open(channel.url, channel.label, channel.browser)}
             accessibilityLabel={`Open Zemen Academy ${channel.label}`}
           >
             {channel.label}

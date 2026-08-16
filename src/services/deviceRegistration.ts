@@ -10,13 +10,22 @@ let memoryInstallationId: string | null = null;
 
 async function installationId(): Promise<string> {
   if (memoryInstallationId) return memoryInstallationId;
-  const stored = await SecureStore.getItemAsync(INSTALLATION_ID_KEY);
+  let stored: string | null;
+  try {
+    stored = await SecureStore.getItemAsync(INSTALLATION_ID_KEY);
+  } catch {
+    throw new Error('DEVICE-IDENTITY-READ: This phone could not read its secure app identity. Restart the phone or reinstall Zemen Academy.');
+  }
   if (stored && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(stored)) {
     memoryInstallationId = stored;
     return stored;
   }
   const created = Crypto.randomUUID();
-  await SecureStore.setItemAsync(INSTALLATION_ID_KEY, created);
+  try {
+    await SecureStore.setItemAsync(INSTALLATION_ID_KEY, created);
+  } catch {
+    throw new Error('DEVICE-IDENTITY-SAVE: This phone could not save its secure app identity. Restart the phone or reinstall Zemen Academy.');
+  }
   memoryInstallationId = created;
   return created;
 }

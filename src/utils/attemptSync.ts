@@ -1,4 +1,5 @@
 import type { QuizAttempt } from '@/types';
+import { compactStoredAttempts } from '@/utils/attemptRetention';
 
 export function mergeSyncedAttempts(local: QuizAttempt[], remote: QuizAttempt[]): QuizAttempt[] {
   const merged = new Map(remote.map((attempt) => [attempt.id, attempt]));
@@ -21,9 +22,7 @@ export function mergeSyncedAttempts(local: QuizAttempt[], remote: QuizAttempt[])
     }
   });
 
-  const result = [...merged.values()].sort((left, right) => (
-    new Date(right.completedAt).getTime() - new Date(left.completedAt).getTime()
-  ));
+  const result = compactStoredAttempts([...merged.values()]);
   if (result.length === local.length && result.every((attempt, index) => sameAttempt(local[index], attempt))) {
     return local;
   }
@@ -36,6 +35,7 @@ function sameAttempt(left: QuizAttempt | undefined, right: QuizAttempt): boolean
   const rightScore = right.scoreSnapshot;
   return left.id === right.id
     && left.unitId === right.unitId
+    && (left.contentType ?? 'unit') === (right.contentType ?? 'unit')
     && left.mode === right.mode
     && left.startedAt === right.startedAt
     && left.completedAt === right.completedAt

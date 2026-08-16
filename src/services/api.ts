@@ -17,9 +17,11 @@ import type {
   QuestionReport,
   QuizAttempt,
   Stream,
+  StudyNote,
   User,
 } from '@/types';
 import { ReadRequestCache, stableRequestKey } from '@/utils/requestCache';
+import type { StudyPlan } from '@/utils/timetable';
 import { apiErrorContext, userFacingError } from '@/utils/userFacingError';
 
 const TOKEN_KEY = 'zemen-session-token';
@@ -74,9 +76,10 @@ function readRequest<T>(
   body: Record<string, unknown>,
   ttlMs: number,
   force = false,
+  timeoutMs = 15_000,
 ): Promise<T> {
   const key = stableRequestKey(action, body);
-  return readCache.run(key, ttlMs, () => request<T>(action, body), force);
+  return readCache.run(key, ttlMs, () => request<T>(action, body, timeoutMs), force);
 }
 
 interface AuthResult {
@@ -87,7 +90,12 @@ interface AuthResult {
 }
 
 async function storeAuth(result: AuthResult): Promise<AuthResult> {
-  await SecureStore.setItemAsync(TOKEN_KEY, result.token);
+  try {
+    await SecureStore.setItemAsync(TOKEN_KEY, result.token);
+  } catch {
+    memoryToken = null;
+    throw new Error('SESSION-SAVE: Your account was created, but this phone could not securely save the sign-in session. Restart the phone, then sign in with the same email and password.');
+  }
   memoryToken = result.token;
   readCache.clear();
   return result;
@@ -116,8 +124,8 @@ export const api = {
     return request('premiumStatus', {});
   },
 
-  premiumOverview(includeEntitlement: boolean): Promise<PremiumOverview> {
-    return request('premiumOverview', { includeEntitlement });
+  premiumOverview(includeEntitlement: boolean, includeCommerce: boolean): Promise<PremiumOverview> {
+    return request('premiumOverview', { includeEntitlement, includeCommerce });
   },
 
   createPremiumRequest(input: PremiumRequestInput): Promise<{ request: PremiumRequest }> {
@@ -159,8 +167,12 @@ export const api = {
     return request('updateProfile', { preferences });
   },
 
-  registerPushToken(expoPushToken: string, platform: 'android' | 'ios'): Promise<{ registered: true; id: string }> {
-    return request('registerPushToken', { expoPushToken, platform });
+  registerPushToken(
+    expoPushToken: string,
+    platform: 'android' | 'ios',
+    installationId: string,
+  ): Promise<{ registered: true; id: string }> {
+    return request('registerPushToken', { expoPushToken, platform, installationId });
   },
 
   unregisterPushToken(expoPushToken: string): Promise<{ unregistered: boolean }> {
@@ -168,7 +180,7 @@ export const api = {
   },
 
   catalog(grade: Grade, stream?: Stream, since?: string, force = false): Promise<CatalogCache & { announcements: Announcement[] }> {
-    return readRequest('catalog', { grade, stream, since }, 30_000, force);
+    return readRequest('catalog', { grade, stream, since }, 30_000, force, 30_000);
   },
 
   announcements(grade: Grade, stream?: Stream, force = false): Promise<{ announcements: Announcement[] }> {
@@ -176,11 +188,19 @@ export const api = {
   },
 
   questions(unitId: string, subjectId: string, version?: number): Promise<{ questions: Question[] }> {
-    return readRequest('questions', { unitId, subjectId, version }, 5 * 60_000);
+    return readRequest('questions', { unitId, subjectId, version }, 5 * 60_000, false, 30_000);
   },
 
-  paper(paperId: string, version?: number): Promise<{ paper: PastPaper; content: string }> {
+  paper(paperId: string, version?: number): Promise<{ paper: PastPaper; questions: Question[] }> {
     return readRequest('paper', { paperId, version }, 5 * 60_000);
+  },
+
+  notes(grade: Grade, stream?: Stream, force = false): Promise<{ notes: StudyNote[] }> {
+    return readRequest('notes', { grade, stream }, 5 * 60_000, force, 30_000);
+  },
+
+  note(noteId: string, version?: number): Promise<{ note: StudyNote }> {
+    return readRequest('note', { noteId, version }, 10 * 60_000, false, 30_000);
   },
 
   syncAttempts(attempts: QuizAttempt[]): Promise<{ syncedIds: string[] }> {
@@ -189,6 +209,14 @@ export const api = {
 
   attempts(force = false): Promise<{ attempts: QuizAttempt[] }> {
     return readRequest('attempts', {}, 30_000, force);
+  },
+
+  studyPlan(force = false): Promise<{ plan: StudyPlan | null; updatedAt: string | null }> {
+    return readRequest('studyPlan', {}, 15_000, force);
+  },
+
+  syncStudyPlan(plan: StudyPlan): Promise<{ plan: StudyPlan; updatedAt: string; accepted: boolean }> {
+    return request('syncStudyPlan', { plan });
   },
 
   syncQuestionReports(reports: QuestionReport[]): Promise<{ reportedIds: string[] }> {

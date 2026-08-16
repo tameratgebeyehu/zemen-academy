@@ -1,16 +1,18 @@
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useCallback, useMemo, useState } from 'react';
-import { InteractionManager, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { Button, Card, Icon, ProgressBar, Text, useTheme } from 'react-native-paper';
 
 import { PressableScale } from '@/components/Motion';
 import { NetworkActivity } from '@/components/NetworkActivity';
 import { EmptyState, Screen } from '@/components/Screen';
+import { V1_AMHARIC_UI_ENABLED } from '@/config';
 import { useApp } from '@/context/AppContext';
 import { userFacingError } from '@/utils/userFacingError';
 import { subjectPalette, ui } from '@/data/theme';
 import type { RootStackParamList } from '@/navigation/types';
+import { runWhenIdle } from '@/utils/idleTask';
 
 export function QuizzesScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -43,7 +45,7 @@ export function QuizzesScreen() {
   );
 
   useFocusEffect(useCallback(() => {
-    const task = InteractionManager.runAfterInteractions(() => {
+    const task = runWhenIdle(() => {
       void refreshCatalog(false).catch(() => undefined);
     });
     return () => task.cancel();
@@ -115,7 +117,7 @@ export function QuizzesScreen() {
                   <View style={styles.subjectTop}>
                     <View style={styles.grow}>
                       <Text variant="titleMedium" style={styles.bold}>
-                        {state.preferences.language === 'am' ? subject.nameAm : subject.name}
+                        {V1_AMHARIC_UI_ENABLED && state.preferences.language === 'am' ? subject.nameAm : subject.name}
                       </Text>
                       <Text variant="bodySmall" style={styles.muted}>{unitCount} learning units</Text>
                     </View>

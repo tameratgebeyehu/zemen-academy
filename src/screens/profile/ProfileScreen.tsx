@@ -8,6 +8,7 @@ import { useAppDialog } from '@/components/AppDialog';
 import { IconTile } from '@/components/Motion';
 import { NetworkActivity } from '@/components/NetworkActivity';
 import { Screen, SectionTitle } from '@/components/Screen';
+import { CONTACTS, MANUAL_PREMIUM_PAYMENTS_ENABLED, V1_DEFAULT_LANGUAGE, V1_PAST_PAPERS_ENABLED } from '@/config';
 import { useApp } from '@/context/AppContext';
 import { heroPalette, ui } from '@/data/theme';
 import type { RootStackParamList } from '@/navigation/types';
@@ -16,16 +17,17 @@ import {
   openNotificationSettings,
   requestNotificationPermission,
 } from '@/services/notifications';
-import type { Grade, Language, Stream, ThemePreference } from '@/types';
+import type { Grade, Stream, ThemePreference } from '@/types';
 import {
   notificationPermissionDescription,
   type NotificationPermissionState,
 } from '@/utils/permissions';
+import { openExternalBrowser } from '@/utils/externalBrowser';
 import { userFacingError } from '@/utils/userFacingError';
 
 export function ProfileScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { state, updateLanguage, updateTheme, completeProfile, logout, startAuthentication, storageBytes, setNotificationsEnabled, t } = useApp();
+  const { state, updateTheme, completeProfile, logout, startAuthentication, storageBytes, setNotificationsEnabled, t } = useApp();
   const { showDialog } = useAppDialog();
   const theme = useTheme();
   const hero = heroPalette(theme.dark);
@@ -115,7 +117,7 @@ export function ProfileScreen() {
       await completeProfile({
         grade,
         stream: grade >= 11 ? stream : undefined,
-        language: state.preferences.language,
+        language: V1_DEFAULT_LANGUAGE,
         reminderTime: state.preferences.reminderTime,
       });
       setEditingPlan(false);
@@ -150,7 +152,7 @@ export function ProfileScreen() {
           />
           <View style={styles.grow}>
             <Text variant="titleLarge" style={[styles.heroName, { color: profileHero.foreground }]}>{state.user?.name}</Text>
-            <Text variant="bodySmall" style={[styles.heroMeta, { color: profileHero.muted }]}>{state.user?.email ?? 'Guest account'}{state.user?.phone ? ` • ${state.user.phone}` : ''}</Text>
+            <Text variant="bodySmall" style={[styles.heroMeta, { color: profileHero.muted }]}>{state.user?.email ?? 'Guest account'}</Text>
             <View style={styles.heroBadge}>
               <Icon source={state.user?.isPremium ? 'crown' : 'school-outline'} size={15} color={state.user?.isPremium ? '#E1B84B' : profileHero.foreground} />
               <Text variant="labelMedium" style={{ color: profileHero.foreground, fontWeight: '700' }}>{state.user?.isPremium ? `PREMIUM • ${gradeLabel}` : gradeLabel}</Text>
@@ -231,16 +233,6 @@ export function ProfileScreen() {
       <Card mode="outlined" style={[styles.sectionCard, theme.dark ? ui.shadow.dark : ui.shadow.light, { backgroundColor: theme.colors.surface }]}>
         <Card.Content style={styles.cardContent}>
           <View style={styles.settingLabel}>
-            <Icon source="translate" size={20} color={theme.colors.primary} />
-            <Text variant="labelLarge" style={styles.bold}>{t('language')}</Text>
-          </View>
-          <SegmentedButtons
-            value={state.preferences.language}
-            onValueChange={(value) => updateLanguage(value as Language)}
-            buttons={[{ value: 'en', label: t('english') }, { value: 'am', label: t('amharic') }]}
-          />
-          <Divider style={styles.innerDivider} />
-          <View style={styles.settingLabel}>
             <Icon source="theme-light-dark" size={20} color={theme.colors.primary} />
             <Text variant="labelLarge" style={styles.bold}>{t('appearance')}</Text>
           </View>
@@ -281,8 +273,12 @@ export function ProfileScreen() {
       <SectionTitle>More</SectionTitle>
       <Card mode="outlined" style={[styles.listCard, theme.dark ? ui.shadow.dark : ui.shadow.light, { backgroundColor: theme.colors.surface }]}>
         <List.Item
-          title={state.user?.isPremium ? 'Premium active' : 'Upgrade to Premium'}
-          description={state.user?.isPremium ? 'View your plan and expiration' : 'Plans from 149 ETB · Manual verification'}
+          title={state.user?.isPremium ? 'Premium active' : MANUAL_PREMIUM_PAYMENTS_ENABLED ? 'Upgrade to Premium' : 'Premium access'}
+          description={state.user?.isPremium
+            ? 'View your plan and expiration'
+            : MANUAL_PREMIUM_PAYMENTS_ENABLED
+              ? 'Plans from 149 ETB · Manual verification'
+              : 'Sign in to check account access'}
           left={() => state.user?.isPremium
             ? <View style={styles.premiumListIcon}><Icon source="crown" size={22} color="#6A4700" /></View>
             : <IconTile source="crown-outline" size={21} style={styles.listIcon} />}
@@ -292,10 +288,39 @@ export function ProfileScreen() {
         <Divider />
         <List.Item
           title={t('downloads')}
-          description={`${state.unitDownloads.length + state.paperDownloads.length} items • ${Math.max(1, Math.ceil(storageBytes / 1024))} KB`}
+          description={`${state.unitDownloads.length + state.noteDownloads.length + (V1_PAST_PAPERS_ENABLED ? state.paperDownloads.length : 0)} items • ${Math.max(1, Math.ceil(storageBytes / 1024))} KB`}
           left={() => <IconTile source="download-outline" size={21} style={styles.listIcon} />}
           right={(props) => <List.Icon {...props} icon="chevron-right" />}
           onPress={() => navigation.navigate('Main', { screen: 'DownloadsTab' })}
+        />
+        <Divider />
+        <List.Item
+          title="Help center"
+          description="Accounts, devices, downloads, Premium, and question reports"
+          left={() => <IconTile source="lifebuoy" size={21} style={styles.listIcon} />}
+          right={(props) => <List.Icon {...props} icon="chevron-right" />}
+          onPress={() => navigation.navigate('HelpCenter')}
+        />
+        <Divider />
+        <List.Item
+          title="Privacy & terms"
+          description="Privacy policy, data controls, and terms of use"
+          left={() => <IconTile source="shield-lock-outline" size={21} style={styles.listIcon} />}
+          right={(props) => <List.Icon {...props} icon="chevron-right" />}
+          onPress={() => navigation.navigate('PrivacyCenter')}
+        />
+        <Divider />
+        <List.Item
+          title="Account deletion"
+          description="Request deletion of your account and associated data"
+          left={() => <IconTile source="account-remove-outline" size={21} style={styles.listIcon} />}
+          right={(props) => <List.Icon {...props} icon="open-in-new" />}
+          onPress={() => void openExternalBrowser(CONTACTS.accountDeletion).catch(() => showDialog({
+            title: 'Could not open the website',
+            body: 'Open zemenacademy.com/account-deletion in your browser, or use the email option in Privacy & terms.',
+            icon: 'web-cancel',
+            tone: 'warning',
+          }))}
         />
         <Divider />
         <List.Item
@@ -326,7 +351,7 @@ export function ProfileScreen() {
           contentStyle={styles.logout}
           onPress={() => showDialog({
             title: 'Sign out?',
-            body: 'Your downloaded quizzes and papers will remain safely stored on this device.',
+            body: 'Your downloaded quizzes and notes will remain safely stored on this device.',
             icon: 'logout-variant',
             tone: 'danger',
             actions: [

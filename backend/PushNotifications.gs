@@ -6,8 +6,18 @@ function registerPushToken_(payload) {
   var session = requireSession_(payload.token);
   var expoPushToken = clean_(payload.expoPushToken, 240);
   var platform = clean_(payload.platform, 20).toLowerCase();
+  var installationId = clean_(session.installationId, 80).toLowerCase();
+  var suppliedInstallationId = clean_(payload.installationId, 80).toLowerCase();
   if (!isExpoPushToken_(expoPushToken)) throw new Error('Invalid Expo push token.');
   if (['android', 'ios'].indexOf(platform) < 0) throw new Error('Invalid push platform.');
+  if (!installationId || session.deviceAuthorized === false || String(session.deviceAuthorized).toLowerCase() === 'false') {
+    throw new Error('This device is not authorized for notifications.');
+  }
+  // Older installed APKs do not send installationId yet. The session value is trusted;
+  // when a newer client supplies one, reject only an actual mismatch.
+  if (suppliedInstallationId && suppliedInstallationId !== installationId) {
+    throw new Error('Notification device identity does not match this session.');
+  }
 
   return withLock_(function () {
     var now = new Date().toISOString();
@@ -22,6 +32,7 @@ function registerPushToken_(payload) {
       updateObjectAtRow_('DeviceTokens', existing._row, {
         userId: session.userId,
         platform: platform,
+        installationId: installationId,
         status: 'active',
         lastError: '',
         lastErrorAt: '',
@@ -35,6 +46,7 @@ function registerPushToken_(payload) {
       userId: session.userId,
       expoPushToken: expoPushToken,
       platform: platform,
+      installationId: installationId,
       status: 'active',
       lastSuccessAt: '',
       lastError: '',
@@ -67,6 +79,40 @@ function isExpoPushToken_(value) {
   return /^(ExponentPushToken|ExpoPushToken)\[[A-Za-z0-9_-]+\]$/.test(String(value || ''));
 }
 
+function activeDeviceInstallationLookup_() {
+  var lookup = {};
+  if (!masterSpreadsheet_().getSheetByName('UserDevices')) return lookup;
+  objects_('UserDevices').forEach(function (device) {
+    if (clean_(device.status, 20).toLowerCase() !== 'active') return;
+    var installationId = clean_(device.installationId, 80).toLowerCase();
+    if (installationId) lookup[String(device.userId) + ':' + installationId] = true;
+  });
+  return lookup;
+}
+
+function pushTokenBelongsToActiveDevice_(device, lookup) {
+  var installationId = clean_(device.installationId, 80).toLowerCase();
+  return Boolean(installationId && lookup[String(device.userId) + ':' + installationId]);
+}
+
+function deactivatePushTokensForInstallation_(userId, installationId) {
+  if (!masterSpreadsheet_().getSheetByName('DeviceTokens')) return 0;
+  installationId = clean_(installationId, 80).toLowerCase();
+  var updated = 0;
+  objects_('DeviceTokens').filter(function (device) {
+    return String(device.userId) === String(userId)
+      && clean_(device.installationId, 80).toLowerCase() === installationId
+      && clean_(device.status, 20).toLowerCase() === 'active';
+  }).forEach(function (device) {
+    updateObjectAtRow_('DeviceTokens', device._row, {
+      status: 'inactive',
+      updatedAt: new Date().toISOString()
+    });
+    updated += 1;
+  });
+  return updated;
+}
+
 function enqueueAnnouncementPush_(announcementId) {
   var spreadsheet = masterSpreadsheet_();
   if (!spreadsheet.getSheetByName('PushQueue')) {
@@ -79,6 +125,32 @@ function enqueueAnnouncementPush_(announcementId) {
   appendObject_('PushQueue', {
     id: 'push-' + Utilities.getUuid(),
     announcementId: announcementId,
+    status: 'pending',
+    attempts: 0,
+    nextAttemptAt: now,
+    lastError: '',
+    createdAt: now,
+    updatedAt: now
+  });
+  return true;
+}
+
+function enqueuePremiumActivationPush_(requestId, userId, planName, premiumUntil) {
+  var spreadsheet = masterSpreadsheet_();
+  if (!spreadsheet.getSheetByName('PremiumPushQueue')) {
+    console.warn('Premium push queue is not installed; the activation remains available in-app.');
+    return false;
+  }
+  requestId = clean_(requestId, 160);
+  userId = clean_(userId, 160);
+  if (!requestId || !userId || findObject_('PremiumPushQueue', 'requestId', requestId)) return false;
+  var now = new Date().toISOString();
+  appendObject_('PremiumPushQueue', {
+    id: 'premium-push-' + Utilities.getUuid(),
+    requestId: requestId,
+    userId: userId,
+    planName: clean_(planName, 80) || 'Zemen Premium',
+    premiumUntil: optionalIso_(premiumUntil),
     status: 'pending',
     attempts: 0,
     nextAttemptAt: now,
@@ -146,10 +218,50 @@ function processPushQueue() {
         });
       }
     });
-    return { processed: queue.length, accepted: accepted, busy: false };
+    var premium = processPremiumActivationPushQueue_(now);
+    return {
+      processed: queue.length + premium.processed,
+      announcementProcessed: queue.length,
+      premiumProcessed: premium.processed,
+      accepted: accepted + premium.accepted,
+      busy: false
+    };
   } finally {
     lock.releaseLock();
   }
+}
+
+function processPremiumActivationPushQueue_(now) {
+  var spreadsheet = masterSpreadsheet_();
+  if (!spreadsheet.getSheetByName('PremiumPushQueue')) return { processed: 0, accepted: 0 };
+  var queue = objects_('PremiumPushQueue').filter(function (item) {
+    var status = clean_(item.status, 20).toLowerCase();
+    return ['pending', 'retry'].indexOf(status) >= 0
+      && Number(item.attempts || 0) < PUSH_QUEUE_MAX_ATTEMPTS
+      && (!item.nextAttemptAt || new Date(item.nextAttemptAt).getTime() <= now);
+  }).slice(0, 3);
+  var accepted = 0;
+  queue.forEach(function (item) {
+    var attempts = Number(item.attempts || 0) + 1;
+    try {
+      var result = sendPremiumActivationPush_(item.userId, item.planName, item.premiumUntil);
+      if (!result || Number(result.accepted) < 1) throw new Error('No authorized notification device is currently available.');
+      accepted += Number(result.accepted) || 0;
+      updateObjectAtRow_('PremiumPushQueue', item._row, {
+        status: 'sent', attempts: attempts, nextAttemptAt: '', lastError: '', updatedAt: new Date().toISOString()
+      });
+    } catch (error) {
+      var finalAttempt = attempts >= PUSH_QUEUE_MAX_ATTEMPTS;
+      updateObjectAtRow_('PremiumPushQueue', item._row, {
+        status: finalAttempt ? 'failed' : 'retry',
+        attempts: attempts,
+        nextAttemptAt: finalAttempt ? '' : new Date(Date.now() + pushRetryDelayMs_(attempts)).toISOString(),
+        lastError: clean_(error && error.message ? error.message : error, 500),
+        updatedAt: new Date().toISOString()
+      });
+    }
+  });
+  return { processed: queue.length, accepted: accepted };
 }
 
 function sendAnnouncementPush_(announcementId) {
@@ -160,11 +272,13 @@ function sendAnnouncementPush_(announcementId) {
   var grade = Number(announcement.audienceGrade) || 0;
   var stream = clean_(announcement.audienceStream, 20);
   var usersById = {};
+  var activeInstallations = activeDeviceInstallationLookup_();
   objects_('Users').forEach(function (user) {
     usersById[String(user.id)] = user;
   });
   var recipients = objects_('DeviceTokens').filter(function (device) {
     if (String(device.status).toLowerCase() !== 'active' || !isExpoPushToken_(device.expoPushToken)) return false;
+    if (!pushTokenBelongsToActiveDevice_(device, activeInstallations)) return false;
     var user = usersById[String(device.userId)];
     if (!user || String(user.status).toLowerCase() !== 'active') return false;
     if (grade && Number(user.grade) !== grade) return false;
@@ -232,6 +346,78 @@ function sendAnnouncementPush_(announcementId) {
   return { recipients: recipients.length, accepted: accepted, invalid: invalid };
 }
 
+function sendPremiumActivationPush_(userId, planName, premiumUntil) {
+  userId = clean_(userId, 160);
+  if (!userId) return { recipients: 0, accepted: 0, invalid: 0 };
+  var activeInstallations = activeDeviceInstallationLookup_();
+  var recipients = objects_('DeviceTokens').filter(function (device) {
+    return String(device.userId) === userId
+      && String(device.status).toLowerCase() === 'active'
+      && isExpoPushToken_(device.expoPushToken)
+      && pushTokenBelongsToActiveDevice_(device, activeInstallations);
+  });
+  if (!recipients.length) return { recipients: 0, accepted: 0, invalid: 0 };
+
+  var expiryText = premiumUntil ? String(premiumUntil).slice(0, 10) : '';
+  var accepted = 0;
+  var invalid = 0;
+  for (var offset = 0; offset < recipients.length; offset += EXPO_PUSH_BATCH_SIZE) {
+    var batch = recipients.slice(offset, offset + EXPO_PUSH_BATCH_SIZE);
+    var messages = batch.map(function (device) {
+      return {
+        to: device.expoPushToken,
+        sound: 'default',
+        title: 'Premium activated',
+        body: clean_(planName || 'Zemen Premium', 80) + ' is ready' + (expiryText ? ' until ' + expiryText : '') + '.',
+        data: { kind: 'premium-activation' },
+        priority: 'high',
+        channelId: 'zemen-premium',
+        ttl: 86400
+      };
+    });
+    var options = {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify(messages),
+      muteHttpExceptions: true,
+      headers: { Accept: 'application/json', 'Accept-Encoding': 'gzip, deflate' }
+    };
+    var accessToken = PropertiesService.getScriptProperties().getProperty('EXPO_ACCESS_TOKEN');
+    if (accessToken) options.headers.Authorization = 'Bearer ' + accessToken;
+    var response = UrlFetchApp.fetch(EXPO_PUSH_ENDPOINT, options);
+    var statusCode = response.getResponseCode();
+    if (statusCode < 200 || statusCode >= 300) {
+      throw new Error('Expo Push Service returned HTTP ' + statusCode + ': ' + clean_(response.getContentText(), 300));
+    }
+    var parsed = JSON.parse(response.getContentText() || '{}');
+    var tickets = Array.isArray(parsed.data) ? parsed.data : [parsed.data];
+    tickets.forEach(function (ticket, index) {
+      var device = batch[index];
+      if (!device || !ticket) return;
+      var now = new Date().toISOString();
+      if (ticket.status === 'ok') {
+        accepted += 1;
+        updateObjectAtRow_('DeviceTokens', device._row, {
+          lastSuccessAt: now, lastError: '', lastErrorAt: '', updatedAt: now
+        });
+        return;
+      }
+      var errorCode = ticket.details && ticket.details.error ? String(ticket.details.error) : 'PushRejected';
+      if (errorCode === 'DeviceNotRegistered') {
+        invalid += 1;
+        updateObjectAtRow_('DeviceTokens', device._row, {
+          status: 'invalid', lastError: errorCode, lastErrorAt: now, updatedAt: now
+        });
+      } else {
+        updateObjectAtRow_('DeviceTokens', device._row, {
+          lastError: errorCode, lastErrorAt: now, updatedAt: now
+        });
+      }
+    });
+  }
+  return { recipients: recipients.length, accepted: accepted, invalid: invalid };
+}
+
 function pushRetryDelayMs_(attempts) {
   return Math.min(15 * 60 * 1000 * Math.pow(2, Math.max(0, Number(attempts) - 1)), 6 * 60 * 60 * 1000);
 }
@@ -241,6 +427,7 @@ function installPushNotifications() {
   if (!spreadsheet) throw new Error('Open the master spreadsheet before installing push notifications.');
   ensureSheetWithHeaders_(spreadsheet, 'DeviceTokens', SHEET_HEADERS.DeviceTokens);
   ensureSheetWithHeaders_(spreadsheet, 'PushQueue', SHEET_HEADERS.PushQueue);
+  ensureSheetWithHeaders_(spreadsheet, 'PremiumPushQueue', SHEET_HEADERS.PremiumPushQueue);
   var properties = PropertiesService.getScriptProperties();
   properties.setProperty('SPREADSHEET_ID', spreadsheet.getId());
   properties.setProperty('PUSH_SCAN_CURSOR', new Date().toISOString());
@@ -250,6 +437,6 @@ function installPushNotifications() {
     ScriptApp.deleteTrigger(trigger);
   });
   ScriptApp.newTrigger('processPushQueue').timeBased().everyMinutes(1).create();
-  console.log('Push notifications installed: DeviceTokens, PushQueue, and one-minute worker are ready.');
+  console.log('Push notifications installed: DeviceTokens, PushQueue, PremiumPushQueue, and one-minute worker are ready.');
   return { installed: true, trigger: 'every minute' };
 }

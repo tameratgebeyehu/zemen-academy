@@ -1,6 +1,6 @@
 import type { NavigatorScreenParams } from '@react-navigation/native';
 
-import type { QuizMode } from '@/types';
+import type { QuizContentType, QuizMode } from '@/types';
 
 export type MainTabParamList = {
   HomeTab: undefined;
@@ -18,14 +18,21 @@ export type RootStackParamList = {
   Main: NavigatorScreenParams<MainTabParamList> | undefined;
   Search: undefined;
   Announcements: undefined;
+  AnnouncementDetail: { announcementId: string };
   PastPapers: undefined;
+  PastPaperDetails: { paperId: string };
   PaperViewer: { paperId: string };
   Units: { subjectId: string };
   QuizDetails: { unitId: string };
-  ExamRules: { unitId: string; mode: QuizMode };
-  QuizPlayer: { unitId: string; mode: QuizMode };
+  ExamRules: { unitId: string; mode: QuizMode; contentType?: QuizContentType };
+  QuizPlayer: { unitId: string; mode: QuizMode; contentType?: QuizContentType };
   Results: { attemptId: string };
   Progress: undefined;
+  Timetable: undefined;
+  Notes: undefined;
+  NoteViewer: { noteId: string; version: number };
+  HelpCenter: undefined;
+  PrivacyCenter: undefined;
   About: undefined;
   Premium: undefined;
 };

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Linking, StyleSheet, View } from 'react-native';
+import { AppState, Linking, StyleSheet, View } from 'react-native';
+import NetInfo from '@react-native-community/netinfo';
 import { ActivityIndicator, Button, Card, Icon, Text, useTheme } from 'react-native-paper';
 
 import { useAppDialog } from '@/components/AppDialog';
@@ -43,6 +44,37 @@ export function DeviceAccessScreen() {
       .finally(() => setBusy(false));
   }, [policy, syncDeviceObservation]);
 
+  useEffect(() => {
+    if (!policy || policy.accessAllowed) return undefined;
+    let active = true;
+    let running = false;
+    const refreshReleasedSlot = async () => {
+      if (!active || running) return;
+      running = true;
+      try {
+        await syncDeviceObservation(true);
+        if (active) setError('');
+      } catch {
+        // Keep the current policy visible and retry when connectivity returns.
+      } finally {
+        running = false;
+      }
+    };
+    const timer = setInterval(() => void refreshReleasedSlot(), 5_000);
+    const appState = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') void refreshReleasedSlot();
+    });
+    const network = NetInfo.addEventListener((state) => {
+      if (state.isConnected) void refreshReleasedSlot();
+    });
+    return () => {
+      active = false;
+      clearInterval(timer);
+      appState.remove();
+      network();
+    };
+  }, [policy?.accessAllowed, policy?.blockedReason, syncDeviceObservation]);
+
   const replace = () => showDialog({
     title: 'Replace the old device?',
     body: `Your existing ${policy?.currentDeviceType === 'tablet' ? 'tablet' : 'phone'} will lose access. Another self-service replacement will not be available for 30 days.`,
@@ -66,6 +98,7 @@ export function DeviceAccessScreen() {
 
   const checking = !policy;
   const linkedToAnotherAccount = policy?.blockedReason === 'device-linked';
+  const releasedDevice = policy?.blockedReason === 'device-released';
   const availableDate = policy?.replacementAvailableAt?.slice(0, 10);
 
   return (
@@ -80,12 +113,14 @@ export function DeviceAccessScreen() {
 
       <View style={styles.heading}>
         <Text variant="headlineMedium" style={styles.title}>
-          {checking ? 'Checking this device…' : linkedToAnotherAccount ? 'Device already linked' : 'Device limit reached'}
+          {checking ? 'Checking this device…' : releasedDevice ? 'Device released' : linkedToAnotherAccount ? 'Device already linked' : 'Device limit reached'}
         </Text>
         <Text variant="bodyLarge" style={styles.muted}>
           {checking
             ? 'Zemen Academy is securely confirming this installation before opening the account.'
-            : linkedToAnotherAccount
+            : releasedDevice
+              ? 'This installation was released from the account and cannot reclaim the device slot.'
+              : linkedToAnotherAccount
               ? 'This installation is already connected to another student account.'
               : `This account already has an active ${policy?.currentDeviceType === 'tablet' ? 'tablet' : 'phone'}.`}
         </Text>
@@ -139,6 +174,11 @@ export function DeviceAccessScreen() {
       <Button mode="outlined" icon="refresh" contentStyle={styles.action} loading={busy} disabled={busy} onPress={() => void check()}>
         Check again
       </Button>
+      {!checking ? (
+        <Text variant="bodySmall" style={styles.centerMuted}>
+          This page checks automatically. After an administrator releases a slot, access will open without signing in again.
+        </Text>
+      ) : null}
       {!checking ? (
         <Button mode="text" icon="send-outline" onPress={() => void Linking.openURL(CONTACTS.telegram)}>
           Contact Telegram support

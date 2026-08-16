@@ -27,8 +27,8 @@ export function ProgressScreen({ navigation }: Props) {
   const weeklyActivity = useMemo(() => activityForLastSevenDays(state.attempts), [state.attempts]);
   const streak = useMemo(() => currentStudyStreak(state.attempts), [state.attempts]);
   const subjects = useMemo(
-    () => progressBySubject(state.attempts, state.catalog.units, state.catalog.subjects),
-    [state.attempts, state.catalog.subjects, state.catalog.units],
+    () => progressBySubject(state.attempts, state.catalog.units, state.catalog.subjects, state.catalog.pastPapers),
+    [state.attempts, state.catalog.pastPapers, state.catalog.subjects, state.catalog.units],
   );
   const completedAttempts = useMemo(
     () => state.attempts.filter(countsAsCompletedAttempt).slice(0, 6),

@@ -1,5 +1,5 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, ScrollView, StyleSheet, View } from 'react-native';
 import {
   Button,
@@ -24,7 +24,7 @@ import { Screen } from '@/components/Screen';
 import { useApp } from '@/context/AppContext';
 import type { RootStackParamList } from '@/navigation/types';
 import type { AnswerIndex, AttemptEndReason, QuestionReportCategory } from '@/types';
-import { formatDuration } from '@/utils/quiz';
+import { countdownSeconds, formatDuration, quizDurationSeconds, steadyNowMs } from '@/utils/quiz';
 import { QUESTION_REPORT_OPTIONS } from '@/utils/questionReports';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'QuizPlayer'>;
@@ -36,7 +36,7 @@ export function QuizPlayerScreen({ route, navigation }: Props) {
   const questions = questionsForUnit(route.params.unitId);
   const [current, setCurrent] = useState(0);
   const [answers, setAnswers] = useState<Array<AnswerIndex | null>>(() => questions.map(() => null));
-  const [secondsLeft, setSecondsLeft] = useState(questions.length * 60);
+  const answersRef = useRef(answers);
   const [reportOpen, setReportOpen] = useState(false);
   const [reportCategory, setReportCategory] = useState<QuestionReportCategory | null>(null);
   const [reportNote, setReportNote] = useState('');
@@ -44,22 +44,32 @@ export function QuizPlayerScreen({ route, navigation }: Props) {
   const [reportedQuestionIds, setReportedQuestionIds] = useState<Set<string>>(() => new Set());
   const [notice, setNotice] = useState('');
   const startedAt = useRef(new Date().toISOString());
-  const startedMs = useRef(Date.now());
+  const startedMs = useRef(steadyNowMs());
   const finished = useRef(false);
   const exitPromptVisible = useRef(false);
   const isExam = route.params.mode === 'exam';
   const question = questions[current];
   const selected = answers[current] ?? null;
 
+  const select = useCallback((answer: AnswerIndex) => {
+    if (!isExam && selected !== null) return;
+    setAnswers((currentAnswers) => {
+      const next = currentAnswers.map((value, index) => index === current ? answer : value);
+      answersRef.current = next;
+      return next;
+    });
+  }, [current, isExam, selected]);
+
   const saveAttempt = useCallback((endReason: AttemptEndReason) => recordAttempt({
       unitId: route.params.unitId,
+      contentType: route.params.contentType ?? 'unit',
       mode: route.params.mode,
       questions,
-      answers,
+      answers: answersRef.current,
       startedAt: startedAt.current,
-      durationSeconds: Math.max(1, Math.round((Date.now() - startedMs.current) / 1000)),
+      durationSeconds: Math.max(1, Math.round((steadyNowMs() - startedMs.current) / 1000)),
       endReason,
-    }), [answers, questions, recordAttempt, route.params.mode, route.params.unitId]);
+    }), [questions, recordAttempt, route.params.contentType, route.params.mode, route.params.unitId]);
 
   const finish = useCallback((endReason: AttemptEndReason) => {
     if (finished.current || !questions.length) return;
@@ -67,6 +77,7 @@ export function QuizPlayerScreen({ route, navigation }: Props) {
     const attemptId = saveAttempt(endReason);
     navigation.replace('Results', { attemptId });
   }, [navigation, questions.length, saveAttempt]);
+  const expireAttempt = useCallback(() => finish('time-expired'), [finish]);
 
   useEffect(() => {
     void ScreenCapture.preventScreenCaptureAsync();
@@ -120,21 +131,6 @@ export function QuizPlayerScreen({ route, navigation }: Props) {
     return remove;
   }, [navigation, saveAttempt, showDialog]);
 
-  useEffect(() => {
-    if (finished.current) return;
-    const timer = setInterval(() => {
-      setSecondsLeft((value) => {
-        if (value <= 1) {
-          clearInterval(timer);
-          setTimeout(() => finish('time-expired'), 0);
-          return 0;
-        }
-        return value - 1;
-      });
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [finish]);
-
   if (!question) {
     return (
       <Screen safeTop>
@@ -145,30 +141,26 @@ export function QuizPlayerScreen({ route, navigation }: Props) {
     );
   }
 
-  const select = (answer: AnswerIndex) => {
-    if (!isExam && selected !== null) return;
-    setAnswers((currentAnswers) => currentAnswers.map((value, index) => index === current ? answer : value));
-  };
-
-  const submitExam = () => {
+  const submitAttempt = () => {
     const skipped = answers.filter((answer) => answer === null).length;
+    const answered = questions.length - skipped;
     showDialog({
-      title: 'Submit exam?',
+      title: 'Submit this quiz?',
       body: skipped
-        ? `${skipped} question${skipped === 1 ? '' : 's'} will be marked as skipped.`
-        : 'You have answered every question. Your result is ready to calculate.',
+        ? `You answered ${answered} of ${questions.length}. ${skipped} question${skipped === 1 ? '' : 's'} will be marked as skipped.`
+        : 'You have answered every question. Your result is ready.',
       icon: 'clipboard-check-outline',
       tone: skipped ? 'warning' : 'primary',
       actions: [
         { label: 'Keep working', tone: 'neutral' },
-        { label: 'Submit exam', tone: 'primary', onPress: () => finish('submitted') },
+        { label: 'Submit quiz', tone: 'primary', onPress: () => finish('submitted') },
       ],
     });
   };
 
-  const advanceInstant = () => {
-    if (current === questions.length - 1) finish('submitted');
-    else setCurrent((value) => value + 1);
+  const goNext = () => {
+    if (current >= questions.length - 1 || (!isExam && selected === null)) return;
+    setCurrent((value) => value + 1);
   };
 
   const openReport = () => {
@@ -209,10 +201,7 @@ export function QuizPlayerScreen({ route, navigation }: Props) {
       <View style={styles.top}>
         <View style={styles.rowBetween}>
           <Text variant="labelLarge">Question {current + 1} of {questions.length}</Text>
-          <View style={[styles.timer, secondsLeft < 60 ? { backgroundColor: theme.colors.errorContainer } : { backgroundColor: theme.colors.secondaryContainer }]}>
-            <Icon source="timer-outline" size={18} />
-            <Text variant="labelLarge">{formatDuration(secondsLeft)}</Text>
-          </View>
+          <QuizTimer totalSeconds={quizDurationSeconds(questions.length)} onExpire={expireAttempt} />
         </View>
         <View style={styles.attemptMeta}>
           <View style={styles.accessLabel}>
@@ -244,18 +233,38 @@ export function QuizPlayerScreen({ route, navigation }: Props) {
         />
       </View>
 
-      {isExam ? (
-        <View style={styles.footerRow}>
-          <Button mode="outlined" disabled={current === 0} onPress={() => setCurrent((value) => value - 1)}>{t('previous')}</Button>
-          {current < questions.length - 1
-            ? <Button mode="contained" onPress={() => setCurrent((value) => value + 1)}>{t('next')}</Button>
-            : <Button mode="contained" buttonColor={theme.colors.error} onPress={submitExam}>{t('submit')}</Button>}
-        </View>
-      ) : (
-        <Button mode="contained" contentStyle={styles.nextButton} disabled={selected === null} onPress={advanceInstant}>
-          {current === questions.length - 1 ? 'Finish' : t('next')}
+      <View style={styles.footerRow}>
+        <Button
+          compact
+          mode="outlined"
+          style={styles.footerAction}
+          contentStyle={styles.footerButtonContent}
+          disabled={current === 0}
+          onPress={() => setCurrent((value) => value - 1)}
+        >
+          {t('previous')}
         </Button>
-      )}
+        <Button
+          compact
+          mode="outlined"
+          style={styles.footerAction}
+          contentStyle={styles.footerButtonContent}
+          textColor={theme.colors.error}
+          onPress={submitAttempt}
+        >
+          {t('submit')}
+        </Button>
+        <Button
+          compact
+          mode="contained"
+          style={styles.footerAction}
+          contentStyle={styles.footerButtonContent}
+          disabled={current === questions.length - 1 || (!isExam && selected === null)}
+          onPress={goNext}
+        >
+          {t('next')}
+        </Button>
+      </View>
 
       <Portal>
         <Dialog
@@ -366,6 +375,41 @@ export function QuizPlayerScreen({ route, navigation }: Props) {
   );
 }
 
+const QuizTimer = memo(function QuizTimer({ totalSeconds, onExpire }: { totalSeconds: number; onExpire: () => void }) {
+  const theme = useTheme();
+  const deadlineMs = useRef(steadyNowMs() + totalSeconds * 1000);
+  const onExpireRef = useRef(onExpire);
+  const expired = useRef(false);
+  const [secondsLeft, setSecondsLeft] = useState(() => countdownSeconds(deadlineMs.current, steadyNowMs()));
+
+  // Updating the callback must never restart the countdown. The deadline belongs to
+  // this mounted attempt and remains fixed even when catalog or answer state rerenders.
+  onExpireRef.current = onExpire;
+
+  useEffect(() => {
+    const tick = () => {
+      const next = countdownSeconds(deadlineMs.current, steadyNowMs());
+      // A countdown must never gain time, even if a platform clock source behaves oddly.
+      setSecondsLeft((current) => Math.min(current, next));
+      if (next === 0 && !expired.current) {
+        expired.current = true;
+        clearInterval(timer);
+        onExpireRef.current();
+      }
+    };
+    const timer = setInterval(tick, 250);
+    tick();
+    return () => clearInterval(timer);
+  }, []);
+
+  return (
+    <View style={[styles.timer, secondsLeft < 60 ? { backgroundColor: theme.colors.errorContainer } : { backgroundColor: theme.colors.secondaryContainer }]}>
+      <Icon source="timer-outline" size={18} />
+      <Text variant="labelLarge">{formatDuration(secondsLeft)}</Text>
+    </View>
+  );
+});
+
 const styles = StyleSheet.create({
   screen: { padding: 16 },
   top: { gap: 10 },
@@ -373,10 +417,11 @@ const styles = StyleSheet.create({
   timer: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12 },
   attemptMeta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   accessLabel: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  reportButton: { minHeight: 34 },
+  reportButton: { minHeight: 48 },
   questionPanel: { flex: 1, minHeight: 0, marginVertical: 12 },
-  footerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  nextButton: { minHeight: 50 },
+  footerRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  footerAction: { flex: 1 },
+  footerButtonContent: { minHeight: 48 },
   reportDialog: { borderRadius: 24, marginHorizontal: 18 },
   reportContent: { gap: 12, paddingTop: 24 },
   reportHeader: { flexDirection: 'row', direction: 'ltr', alignItems: 'center', gap: 12 },

@@ -1,3 +1,5 @@
+var ZEMEN_BACKEND_RELEASE = '2026-08-16-timetable-v2';
+
 function doGet(event) {
   var payload = event && event.parameter ? event.parameter : {};
   var action = String(payload.action || 'health');
@@ -35,16 +37,47 @@ function publicApiError_(error, action) {
   var message = String(error && error.message || '').trim();
   var lower = message.toLowerCase();
   if (lower.indexOf('email or password is incorrect') >= 0) return 'Email or password is incorrect.';
+  if (lower.indexOf('too many signup attempts') >= 0) {
+    return 'Too many account creation attempts. Wait 15 minutes, then try again.';
+  }
   if (lower.indexOf('too many failed attempts') >= 0 || lower.indexOf('too many attempts') >= 0) {
-    return 'Too many attempts. Wait a few minutes and try again.';
+    return 'Too many attempts. Wait 15 minutes, then try again.';
   }
   if (lower.indexOf('account already exists') >= 0) return 'An account already exists for this email.';
   if (lower.indexOf('valid name') >= 0) return 'Enter a valid name.';
   if (lower.indexOf('valid email') >= 0) return 'Enter a valid email address.';
-  if (lower.indexOf('valid phone') >= 0) return 'Enter a valid phone number or leave it empty.';
+  if (lower.indexOf('ethiopian mobile') >= 0 || lower.indexOf('valid phone') >= 0) {
+    return 'Use an Ethiopian mobile number beginning with 09, 07, +2519, or +2517, or leave it empty.';
+  }
   if (lower.indexOf('password must be') >= 0) return 'Use a password with at least 8 characters.';
+  if (lower.indexOf('account registration server setup is incomplete') >= 0
+      || lower.indexOf('device security is not installed') >= 0
+      || lower.indexOf('server security is not initialized') >= 0
+      || lower.indexOf('run setupzemenacademy') >= 0) {
+    return 'Account registration is temporarily unavailable because the server setup is incomplete. Please contact Zemen Academy support.';
+  }
+  if (lower.indexOf('signup-storage') >= 0 || lower.indexOf('account record could not be saved') >= 0) {
+    return 'Your account details could not be saved. Try once more. If it continues, contact Zemen Academy support with code SIGNUP-STORAGE.';
+  }
+  if (lower.indexOf('signup-device') >= 0 || lower.indexOf('account device session could not be created') >= 0) {
+    return 'Device security could not finish creating your account. Contact Zemen Academy support with code SIGNUP-DEVICE.';
+  }
+  if (lower.indexOf('invalid installation identifier') >= 0) {
+    return 'This app installation could not be verified. Update Zemen Academy or reinstall the app, then try again.';
+  }
+  if (lower.indexOf('invalid device type') >= 0 || lower.indexOf('invalid device platform') >= 0) {
+    return 'This device could not be verified by this version of Zemen Academy. Update the app and try again.';
+  }
+  if (lower.indexOf('could not obtain lock') >= 0
+      || lower.indexOf('service invoked too many times') >= 0
+      || lower.indexOf('quota') >= 0) {
+    return 'Account registration is busy right now. Wait a minute and try again.';
+  }
   if (lower.indexOf('device already belongs') >= 0) return 'This device already belongs to another account.';
   if (lower.indexOf('device replacement is temporarily unavailable') >= 0) return message;
+  if (lower.indexOf('installation was released from the account') >= 0) {
+    return 'This device was released from the account. Use the replacement device or contact support.';
+  }
   if (lower.indexOf('device is linked to another account') >= 0) return 'This device is linked to another account. Contact support.';
   if (lower.indexOf('session expired') >= 0 || lower.indexOf('authentication required') >= 0) return 'Your session expired. Sign in again.';
   if (lower.indexOf('premium access is required') >= 0) return 'Zemen Premium is required to open this content.';
@@ -60,6 +93,7 @@ function publicApiError_(error, action) {
 
   var safeByAction = {
     login: 'Sign-in could not be completed. Check your email and password, then try again.',
+    webLogin: 'Sign-in could not be completed. Check your email and password, then try again.',
     signup: 'Your account could not be created right now. Check your details and try again later.',
     requestPasswordReset: 'Password recovery could not be started. Please try again later.',
     confirmPasswordReset: 'The password could not be reset. Please request a new code and try again.',
@@ -67,6 +101,8 @@ function publicApiError_(error, action) {
     catalog: 'Learning content could not be updated. Please try again shortly.',
     questions: 'This quiz could not be opened right now. Please try again.',
     paper: 'This past paper could not be opened right now. Please try again.',
+    notes: 'Study notes could not be updated. Your saved notes are still available.',
+    note: 'This study note could not be opened right now. Please try again.',
     premiumOverview: 'Premium information could not be updated. Please try again.',
     premiumStatus: 'Premium information could not be updated. Please try again.',
     createPremiumRequest: 'The Premium request could not be submitted. Check the details and try again.',
@@ -78,7 +114,9 @@ function publicApiError_(error, action) {
     unregisterPushToken: 'Notification settings could not be updated. Please try again.',
     syncAttempts: 'Your progress is saved on this device and will sync later.',
     attempts: 'Your saved progress could not be updated. It will retry automatically.',
-    reportQuestions: 'Your report is saved on this device and will be sent later.'
+    reportQuestions: 'Your report is saved on this device and will be sent later.',
+    studyPlan: 'Your saved timetable could not be updated. The plan on this device is still available.',
+    syncStudyPlan: 'Your timetable is saved on this device and will sync later.'
   };
   return safeByAction[String(action || '')] || 'The request could not be completed. Please try again.';
 }
@@ -90,9 +128,14 @@ function json_(payload) {
 function route_(payload) {
   var action = String(payload.action || 'health');
   switch (action) {
-    case 'health': return { status: 'ok', version: PropertiesService.getScriptProperties().getProperty('APP_VERSION') || '1.0.0' };
+    case 'health': return {
+      status: 'ok',
+      version: PropertiesService.getScriptProperties().getProperty('APP_VERSION') || '1.0.0',
+      backendRelease: ZEMEN_BACKEND_RELEASE
+    };
     case 'signup': return signup_(payload);
     case 'login': return login_(payload);
+    case 'webLogin': return webLogin_(payload);
     case 'requestPasswordReset': return requestPasswordReset_(payload);
     case 'confirmPasswordReset': return confirmPasswordReset_(payload);
     case 'logout': return logout_(payload);
@@ -101,8 +144,12 @@ function route_(payload) {
     case 'announcements': return announcements_(payload);
     case 'questions': return questions_(payload);
     case 'paper': return paper_(payload);
+    case 'notes': return notes_(payload);
+    case 'note': return note_(payload);
     case 'syncAttempts': return syncAttempts_(payload);
     case 'attempts': return attempts_(payload);
+    case 'studyPlan': return studyPlan_(payload);
+    case 'syncStudyPlan': return syncStudyPlan_(payload);
     case 'reportQuestions': return reportQuestions_(payload);
     case 'version': return version_();
     case 'premiumOverview': return premiumOverview_(payload);
@@ -121,47 +168,73 @@ function signup_(payload) {
   var name = clean_(payload.name, 80).replace(/[\u0000-\u001F\u007F]/g, ' ').replace(/\s+/g, ' ').trim();
   var email = clean_(payload.email, 160).toLowerCase();
   var password = String(payload.password || '');
-  var phone = safeSheetText_(payload.phone, 30);
-  var identity = normalizeDeviceIdentity_(payload);
+  var phone = normalizeEthiopianPhone_(payload.phone);
   if (name.length < 2 || /^[=+\-@]/.test(name)) throw new Error('A valid name is required.');
-  if (!/^\S+@\S+\.\S+$/.test(email)) throw new Error('A valid email is required.');
+  if (!validEmail_(email)) throw new Error('A valid email is required.');
   if (password.length < 8 || password.length > 128) throw new Error('Password must be 8–128 characters.');
+  var identity = normalizeDeviceIdentity_(payload);
+  assertSignupServiceReady_();
 
-  var phoneDigits = phone.replace(/\D/g, '');
-  if (phone && (phoneDigits.length < 7 || phoneDigits.length > 15)) {
-    throw new Error('Enter a valid phone number or leave it empty.');
-  }
   enforceSignupRateLimit_(email, identity.installationId);
 
-  var user = withLock_(function () {
-    if (findObject_('Users', 'email', email)) throw new Error('An account already exists for this email.');
-    var deviceAlreadyLinked = objects_('UserDevices').some(function (device) {
-      return clean_(device.status, 20).toLowerCase() === 'active'
-        && clean_(device.installationId, 80).toLowerCase() === identity.installationId;
+  var user;
+  try {
+    user = withLock_(function () {
+      if (findObject_('Users', 'email', email)) throw new Error('An account already exists for this email.');
+      var deviceAlreadyLinked = objects_('UserDevices').some(function (device) {
+        return clean_(device.status, 20).toLowerCase() === 'active'
+          && clean_(device.installationId, 80).toLowerCase() === identity.installationId;
+      });
+      if (deviceAlreadyLinked) {
+        throw new Error('This device already belongs to a Zemen Academy account. Sign in with that account or contact support.');
+      }
+      var now = new Date().toISOString();
+      var salt = Utilities.getUuid();
+      var created = {
+        id: 'user-' + Utilities.getUuid(), name: name, email: email,
+        passwordHash: passwordHash_(password, salt), passwordSalt: salt,
+        grade: '', stream: '', language: 'en', isPremium: false,
+        status: 'active', createdAt: now, updatedAt: now,
+        premiumPlanId: '', premiumStartedAt: '', premiumUntil: '', premiumStatus: 'free',
+        phone: phone, dailyQuizGoal: 1
+      };
+      appendObject_('Users', created);
+      return created;
     });
-    if (deviceAlreadyLinked) {
-      throw new Error('This device already belongs to a Zemen Academy account. Sign in with that account or contact support.');
+  } catch (storageError) {
+    var storageMessage = String(storageError && storageError.message || storageError);
+    console.error('Signup user-storage stage failed: ' + storageMessage);
+    if (/account already exists|device already belongs/i.test(storageMessage)) throw storageError;
+    throw new Error('SIGNUP-STORAGE: Account record could not be saved.');
+  }
+
+  try {
+    return authResult_(user, payload);
+  } catch (firstAuthError) {
+    var firstAuthMessage = String(firstAuthError && firstAuthError.message || firstAuthError);
+    console.error('Signup device/session stage failed on first attempt: ' + firstAuthMessage);
+    if (/device security is not installed|invalid installation|invalid device|device is linked|device already belongs/i.test(firstAuthMessage)) {
+      rollbackIncompleteSignup_(user.id);
+      throw firstAuthError;
     }
-    var now = new Date().toISOString();
-    var salt = Utilities.getUuid();
-    var user = {
-      id: 'user-' + Utilities.getUuid(), name: name, email: email,
-      passwordHash: passwordHash_(password, salt), passwordSalt: salt,
-      grade: '', stream: '', language: 'en', isPremium: false,
-      status: 'active', createdAt: now, updatedAt: now,
-      premiumPlanId: '', premiumStartedAt: '', premiumUntil: '', premiumStatus: 'free',
-      phone: phone, dailyQuizGoal: 1
-    };
-    appendObject_('Users', user);
-    return user;
-  });
-  return authResult_(user, payload);
+    clearIncompleteSignupAuth_(user.id);
+    Utilities.sleep(250);
+    try {
+      return authResult_(user, payload);
+    } catch (secondAuthError) {
+      console.error('Signup device/session stage failed on retry: '
+        + String(secondAuthError && secondAuthError.message || secondAuthError));
+      rollbackIncompleteSignup_(user.id);
+      throw new Error('SIGNUP-DEVICE: Account device session could not be created.');
+    }
+  }
 }
 
 function login_(payload) {
   var email = clean_(payload.email, 160).toLowerCase();
   var password = String(payload.password || '');
   normalizeDeviceIdentity_(payload);
+  if (!validEmail_(email)) throw new Error('Email or password is incorrect.');
   enforceRateLimit_(email);
   var user = findObject_('Users', 'email', email);
   var valid = user
@@ -176,13 +249,31 @@ function login_(payload) {
   return authResult_(user, payload);
 }
 
+function webLogin_(payload) {
+  var email = clean_(payload.email, 160).toLowerCase();
+  var password = String(payload.password || '');
+  if (!validEmail_(email)) throw new Error('Email or password is incorrect.');
+  enforceRateLimit_(email);
+  var user = findObject_('Users', 'email', email);
+  var valid = user
+    && clean_(user.status, 20).toLowerCase() === 'active'
+    && verifyPassword_(user, password);
+  if (!valid) {
+    logAuthenticationFailure_(email, user);
+    recordFailedLogin_(email);
+    throw new Error('Email or password is incorrect.');
+  }
+  clearFailedLogin_(email);
+  return webAuthResult_(user);
+}
+
 function requestPasswordReset_(payload) {
   var response = {
     accepted: true,
     message: 'If an active account uses that email, a verification code will arrive shortly.'
   };
   var email = clean_(payload.email, 160).toLowerCase();
-  if (!/^\S+@\S+\.\S+$/.test(email)) return response;
+  if (!validEmail_(email)) return response;
   if (!allowPasswordResetRequest_(email)) return response;
   var user = findObject_('Users', 'email', email);
   if (!user || clean_(user.status, 20).toLowerCase() !== 'active') return response;
@@ -320,7 +411,7 @@ function confirmPasswordReset_(payload) {
   var email = clean_(payload.email, 160).toLowerCase();
   var code = clean_(payload.code, 12).replace(/\s/g, '');
   var newPassword = String(payload.newPassword || '');
-  if (!/^\S+@\S+\.\S+$/.test(email) || !/^\d{6}$/.test(code)) {
+  if (!validEmail_(email) || !/^\d{6}$/.test(code)) {
     throw new Error('The verification code is invalid or has expired.');
   }
   if (newPassword.length < 8 || newPassword.length > 128) {
@@ -521,16 +612,16 @@ function catalog_(payload) {
   });
   var units = Object.keys(unitsById).map(function (id) { return unitsById[id]; });
   var papers = objects_('PastPapers').filter(function (item) {
-    return item.status === 'active' && Number(item.grade) === grade && (grade < 11 || item.stream === stream);
+    var paperStream = clean_(item.stream, 20);
+    return item.status === 'active'
+      && (grade < 11 || !paperStream || paperStream === stream);
   }).map(mapPaper_);
   var now = Date.now();
   var announcements = objects_('Announcements').filter(function (item) {
     var gradeMatch = !item.audienceGrade || Number(item.audienceGrade) === grade;
     var streamMatch = !item.audienceStream || item.audienceStream === stream;
     return item.status === 'active' && gradeMatch && streamMatch && new Date(item.publishedAt).getTime() <= now;
-  }).map(function (item) {
-    return { id: item.id, title: item.title, body: item.body, publishedAt: iso_(item.publishedAt) };
-  });
+  }).map(mapAnnouncement_);
   var result = { subjects: subjects, units: units, pastPapers: papers, announcements: announcements };
   cachePutSafely_(cacheKey, JSON.stringify(result), 300);
   return result;
@@ -551,9 +642,7 @@ function announcements_(payload) {
     var gradeMatch = !item.audienceGrade || Number(item.audienceGrade) === grade;
     var streamMatch = !item.audienceStream || item.audienceStream === stream;
     return item.status === 'active' && gradeMatch && streamMatch && new Date(item.publishedAt).getTime() <= now;
-  }).map(function (item) {
-    return { id: item.id, title: item.title, body: item.body, publishedAt: iso_(item.publishedAt) };
-  }).sort(function (left, right) {
+  }).map(mapAnnouncement_).sort(function (left, right) {
     return new Date(right.publishedAt).getTime() - new Date(left.publishedAt).getTime();
   });
 
@@ -591,11 +680,11 @@ function questions_(payload) {
     var answer = indexes[rawAnswer];
     if (answer === undefined) answer = Number(item.correctAnswer);
     if ([0, 1, 2, 3].indexOf(answer) < 0) throw new Error('Invalid correct answer for question ' + item.id + '.');
-    var prompt = String(item.question || '').trim();
+    var prompt = questionContentText_(item.question);
     var options = [item.optionA, item.optionB, item.optionC, item.optionD].map(function (option) {
-      return String(option || '').trim();
+      return questionContentText_(option);
     });
-    var explanation = String(item.explanation || '').trim();
+    var explanation = questionContentText_(item.explanation);
     if (!prompt) throw new Error('Question text is missing for ' + item.id + '.');
     if (options.some(function (option) { return !option; })) {
       throw new Error('All four options are required for question ' + item.id + '.');
@@ -613,31 +702,206 @@ function questions_(payload) {
   return result;
 }
 
+function webAuthResult_(user) {
+  var token = Utilities.getUuid() + Utilities.getUuid();
+  var now = new Date();
+  var hash = tokenHash_(token);
+  var session = {
+    id: 'session-' + Utilities.getUuid(), userId: user.id, tokenHash: hash,
+    expiresAt: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+    revokedAt: '', createdAt: now.toISOString(),
+    installationId: 'web', deviceAuthorized: true
+  };
+  withLock_(function () {
+    appendObject_('Sessions', session);
+  });
+  cachePutSafely_(sessionCacheKey_(hash), JSON.stringify(session), 21600);
+  return { token: token, user: publicUser_(user) };
+}
+
+function mapAnnouncement_(item) {
+  return {
+    id: clean_(item.id, 160),
+    title: clean_(item.title, 160),
+    body: clean_(item.body, 4000),
+    publishedAt: iso_(item.publishedAt),
+    kind: clean_(item.kind, 20) || 'academy',
+    actionType: clean_(item.actionType, 30),
+    targetId: clean_(item.targetId, 160),
+    actionLabel: clean_(item.actionLabel, 80)
+  };
+}
+
+function notes_(payload) {
+  var grade = Number(payload.grade);
+  var stream = clean_(payload.stream, 20);
+  if ([9, 10, 11, 12].indexOf(grade) < 0) throw new Error('Invalid grade.');
+
+  var cache = CacheService.getScriptCache();
+  var cacheKey = 'notes:v1:' + String(grade) + ':' + String(stream || '');
+  var cached = cache.get(cacheKey);
+  if (cached) return JSON.parse(cached);
+
+  var notes = objects_('Notes').filter(function (item) {
+    return item.status === 'active'
+      && Number(item.grade) === grade
+      && (grade < 11 || !item.stream || item.stream === stream);
+  }).map(function (item) { return mapStudyNote_(item, false); }).sort(function (left, right) {
+    if (left.subjectId !== right.subjectId) return left.subjectId.localeCompare(right.subjectId);
+    return left.title.localeCompare(right.title);
+  });
+  var result = { notes: notes };
+  cachePutSafely_(cacheKey, JSON.stringify(result), 300);
+  return result;
+}
+
+function note_(payload) {
+  var noteId = clean_(payload.noteId, 120);
+  if (!noteId) throw new Error('Note not found.');
+  var note = findObject_('Notes', 'id', noteId);
+  if (!note || note.status !== 'active') throw new Error('Note not found.');
+  if (noteAccessTier_(note) === 'premium') requirePremiumAccess_(payload.token);
+
+  var cache = CacheService.getScriptCache();
+  var cacheKey = 'note:v1:' + noteId + ':' + String(Number(note.version) || 1);
+  var cached = cache.get(cacheKey);
+  if (cached) return JSON.parse(cached);
+  var result = { note: mapStudyNote_(note, true) };
+  cachePutSafely_(cacheKey, JSON.stringify(result), 600);
+  return result;
+}
+
+function normalizeEthiopianPhone_(value) {
+  var raw = String(value || '').trim();
+  if (!raw) return '';
+  var digits = raw.replace(/\D/g, '');
+  if (/^0[79]\d{8}$/.test(digits)) return '+251' + digits.slice(1);
+  if (/^251[79]\d{8}$/.test(digits)) return '+' + digits;
+  throw new Error('Use an Ethiopian mobile number beginning with 09, 07, +2519, or +2517, or leave it empty.');
+}
+
+function assertSignupServiceReady_() {
+  var properties = PropertiesService.getScriptProperties();
+  if (!properties.getProperty('SPREADSHEET_ID') || !properties.getProperty('PASSWORD_PEPPER')) {
+    throw new Error('Account registration server setup is incomplete.');
+  }
+  if (typeof SHEET_HEADERS !== 'object' || !SHEET_HEADERS) {
+    throw new Error('Account registration server setup is incomplete.');
+  }
+  var spreadsheet;
+  try {
+    spreadsheet = masterSpreadsheet_();
+  } catch (error) {
+    console.error('Signup readiness could not open the configured spreadsheet: ' + String(error && error.message || error));
+    throw new Error('Account registration server setup is incomplete.');
+  }
+  ['Users', 'Sessions', 'UserDevices'].forEach(function (name) {
+    var expected = SHEET_HEADERS[name];
+    var target = spreadsheet.getSheetByName(name);
+    if (!target || !expected || !expected.length || target.getLastColumn() < expected.length) {
+      throw new Error('Account registration server setup is incomplete.');
+    }
+    var actual = target.getRange(1, 1, 1, expected.length).getValues()[0];
+    expected.forEach(function (header, index) {
+      if (String(actual[index] || '').trim() !== String(header)) {
+        throw new Error('Account registration server setup is incomplete.');
+      }
+    });
+  });
+}
+
+function rollbackIncompleteSignup_(userId) {
+  try {
+    withLock_(function () {
+      removeSignupRowsForUser_(userId, ['Sessions', 'UserDevices']);
+      var usersSheet = masterSpreadsheet_().getSheetByName('Users');
+      var createdUser = findObject_('Users', 'id', userId);
+      if (usersSheet && createdUser && createdUser._row) usersSheet.deleteRow(createdUser._row);
+    });
+  } catch (rollbackError) {
+    console.error('Incomplete signup rollback failed for ' + String(userId) + ': '
+      + String(rollbackError && rollbackError.message || rollbackError));
+  }
+}
+
+function clearIncompleteSignupAuth_(userId) {
+  try {
+    withLock_(function () {
+      removeSignupRowsForUser_(userId, ['Sessions', 'UserDevices']);
+    });
+  } catch (cleanupError) {
+    console.error('Signup retry cleanup failed for ' + String(userId) + ': '
+      + String(cleanupError && cleanupError.message || cleanupError));
+  }
+}
+
+function removeSignupRowsForUser_(userId, sheetNames) {
+  (sheetNames || []).forEach(function (sheetName) {
+    var target = masterSpreadsheet_().getSheetByName(sheetName);
+    if (!target) return;
+    objects_(sheetName).filter(function (item) {
+      return String(item.userId) === String(userId);
+    }).map(function (item) { return item._row; }).sort(function (left, right) {
+      return right - left;
+    }).forEach(function (row) { target.deleteRow(row); });
+  });
+}
+
+function questionContentText_(value) {
+  if (Object.prototype.toString.call(value) === '[object Date]' && !isNaN(value.getTime())) {
+    return Utilities.formatDate(value, Session.getScriptTimeZone(), 'd/M');
+  }
+  return String(value || '').trim();
+}
+
 function paper_(payload) {
   var paperId = clean_(payload.paperId, 120);
   var paper = findObject_('PastPapers', 'id', paperId);
   if (!paper || paper.status !== 'active') throw new Error('Paper not found.');
   if (paperAccessTier_(paper) === 'premium') requirePremiumAccess_(payload.token);
   var cache = CacheService.getScriptCache();
-  var cacheKey = 'paper:v2:' + paperId + ':v' + Math.max(1, Number(paper.version) || 1);
+  var cacheKey = 'paper:v3:' + paperId + ':v' + Math.max(1, Number(paper.version) || 1);
   var cached = cache.get(cacheKey);
-  if (cached) return JSON.parse(cached);
-  if (!paper.content) throw new Error('Paper content has not been added.');
-  var result = { paper: mapPaper_(paper), content: String(paper.content) };
-  cachePutSafely_(cacheKey, JSON.stringify(result), 300);
+  if (cached) return getCachedQuestionResult_(cache, cacheKey);
+  var indexes = { A: 0, B: 1, C: 2, D: 3 };
+  var questions = objects_('PastPaperQuestions').filter(function (item) {
+    return String(item.paperId) === paperId && String(item.status).toLowerCase() === 'active';
+  }).sort(function (left, right) {
+    return Number(left.order) - Number(right.order);
+  }).map(function (item) {
+    var answer = indexes[String(item.correctAnswer).toUpperCase()];
+    if (answer === undefined) answer = Number(item.correctAnswer);
+    if ([0, 1, 2, 3].indexOf(answer) < 0) throw new Error('Invalid correct answer for question ' + item.id + '.');
+    var prompt = questionContentText_(item.question);
+    var options = [item.optionA, item.optionB, item.optionC, item.optionD].map(questionContentText_);
+    var explanation = questionContentText_(item.explanation);
+    if (!prompt || options.some(function (option) { return !option; }) || !explanation) {
+      throw new Error('Published entrance question ' + item.id + ' is incomplete.');
+    }
+    return {
+      id: item.id, unitId: paperId, prompt: prompt, options: options,
+      correctAnswer: answer, explanation: explanation, order: Number(item.order)
+    };
+  });
+  if (!questions.length) throw new Error('Entrance-exam questions have not been published.');
+  var result = { paper: mapPaper_(paper), questions: questions };
+  var complete = JSON.stringify(result);
+  cachePutSafely_(cacheKey, complete, 300);
   return result;
 }
 
 function syncAttempts_(payload) {
   var session = requireSession_(payload.token);
   var attempts = Array.isArray(payload.attempts) ? payload.attempts.slice(0, 50) : [];
-  var existing = {};
-  objects_('Attempts').forEach(function (item) { existing[String(item.id)] = String(item.userId); });
   var syncedIds = [];
   withLock_(function () {
+    var storedAttempts = objects_('Attempts');
+    var existing = {};
+    storedAttempts.forEach(function (item) { existing[String(item.id)] = String(item.userId); });
     attempts.forEach(function (attempt) {
       var id = validatedIdentifier_(attempt.id, 'attempt');
-      var unitId = validatedIdentifier_(attempt.unitId, 'unit');
+      var unitId = validatedIdentifier_(attempt.unitId, 'content');
+      var contentType = clean_(attempt.contentType, 20) === 'past-paper' ? 'past-paper' : 'unit';
       var mode = clean_(attempt.mode, 20);
       var endReason = clean_(attempt.endReason, 30);
       var questions = Array.isArray(attempt.questions) ? attempt.questions : [];
@@ -668,28 +932,196 @@ function syncAttempts_(payload) {
       }
       if (!existing[id]) {
         var score = score_(questions, normalizedAnswers);
-        appendObject_('Attempts', {
+        var storedAttempt = {
           id: id, userId: session.userId, unitId: unitId, mode: mode,
           answersJson: JSON.stringify(normalizedAnswers), correct: score.correct, wrong: score.wrong,
           skipped: score.skipped, durationSeconds: durationSeconds,
-          endReason: endReason, completedAt: new Date(completedTime).toISOString(), createdAt: new Date().toISOString()
-        });
+          endReason: endReason, completedAt: new Date(completedTime).toISOString(), createdAt: new Date().toISOString(),
+          contentType: contentType
+        };
+        appendObject_('Attempts', storedAttempt);
+        storedAttempts.push(storedAttempt);
         existing[id] = String(session.userId);
       }
       syncedIds.push(id);
     });
+    updateProgressSummary_(session.userId, storedAttempts);
   });
   return { syncedIds: syncedIds };
 }
 
+function normalizeStudyPlan_(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid study plan.');
+  if (Number(value.schemaVersion) !== 2) throw new Error('Invalid study plan version.');
+  var startDate = clean_(value.startDate, 10);
+  var updatedAt = clean_(value.updatedAt, 40);
+  var updatedTime = new Date(updatedAt).getTime();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !isFinite(updatedTime)) throw new Error('Invalid study plan date.');
+  var entries = Array.isArray(value.entries) ? value.entries : [];
+  var subjects = Array.isArray(value.subjects) ? value.subjects : [];
+  if (!entries.length || entries.length > 100 || !subjects.length || subjects.length > 30) {
+    throw new Error('Invalid study plan size.');
+  }
+  entries.forEach(function (entry) {
+    if (!entry || typeof entry !== 'object') throw new Error('Invalid study session.');
+    validatedIdentifier_(entry.id, 'study session');
+    validatedIdentifier_(entry.subjectId, 'subject');
+    if (!clean_(entry.subjectName, 80)) throw new Error('Invalid study subject.');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(clean_(entry.date, 10))) throw new Error('Invalid study session date.');
+    if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(clean_(entry.time, 5))) throw new Error('Invalid study session time.');
+    if (['planned', 'completed', 'skipped'].indexOf(clean_(entry.status, 20)) < 0) throw new Error('Invalid study session status.');
+  });
+  var normalized = JSON.parse(JSON.stringify(value));
+  var serialized = JSON.stringify(normalized);
+  if (serialized.length > 45000) throw new Error('Study plan is too large.');
+  return { plan: normalized, json: serialized, updatedAt: new Date(updatedTime).toISOString() };
+}
+
+function storedStudyPlanForUser_(userId) {
+  if (!masterSpreadsheet_().getSheetByName('StudyPlans')) {
+    ensureSheetWithHeaders_(masterSpreadsheet_(), 'StudyPlans', SHEET_HEADERS.StudyPlans);
+  }
+  var stored = findObject_('StudyPlans', 'userId', userId);
+  if (!stored || !stored.planJson) return { row: stored && stored._row, plan: null, updatedAt: '' };
+  try {
+    return { row: stored._row, plan: JSON.parse(String(stored.planJson)), updatedAt: safeIso_(stored.updatedAt) };
+  } catch (error) {
+    console.error('Stored study plan is invalid for user ' + String(userId) + ': ' + error.message);
+    return { row: stored._row, plan: null, updatedAt: '' };
+  }
+}
+
+function studyPlan_(payload) {
+  var session = requireSession_(payload.token);
+  var stored = storedStudyPlanForUser_(session.userId);
+  return { plan: stored.plan, updatedAt: stored.updatedAt || null };
+}
+
+function syncStudyPlan_(payload) {
+  var session = requireSession_(payload.token);
+  var incoming = normalizeStudyPlan_(payload.plan);
+  return withLock_(function () {
+    var stored = storedStudyPlanForUser_(session.userId);
+    var storedTime = stored.updatedAt ? new Date(stored.updatedAt).getTime() : 0;
+    var incomingTime = new Date(incoming.updatedAt).getTime();
+    if (stored.plan && storedTime > incomingTime) {
+      return { plan: stored.plan, updatedAt: stored.updatedAt, accepted: false };
+    }
+    var changes = { userId: session.userId, planJson: incoming.json, updatedAt: incoming.updatedAt };
+    if (stored.row) updateObjectAtRow_('StudyPlans', stored.row, changes);
+    else appendObject_('StudyPlans', changes);
+    return { plan: incoming.plan, updatedAt: incoming.updatedAt, accepted: true };
+  });
+}
+
+function progressSummaryFromAttempts_(attempts, nowMs) {
+  var completed = attempts.filter(function (attempt) {
+    var reason = clean_(attempt.endReason, 30);
+    return reason === 'submitted' || reason === 'time-expired';
+  });
+  var totalSeconds = 0;
+  var correct = 0;
+  var wrong = 0;
+  var skipped = 0;
+  var bestScore = 0;
+  var scoreTotal = 0;
+  var lastCompletedAt = '';
+  var activeDates = {};
+  completed.forEach(function (attempt) {
+    var itemCorrect = Math.max(0, Number(attempt.correct) || 0);
+    var itemWrong = Math.max(0, Number(attempt.wrong) || 0);
+    var itemSkipped = Math.max(0, Number(attempt.skipped) || 0);
+    var total = itemCorrect + itemWrong + itemSkipped;
+    var percentage = total ? Math.round(itemCorrect / total * 100) : 0;
+    correct += itemCorrect;
+    wrong += itemWrong;
+    skipped += itemSkipped;
+    totalSeconds += Math.max(0, Number(attempt.durationSeconds) || 0);
+    scoreTotal += percentage;
+    bestScore = Math.max(bestScore, percentage);
+    var completedAt = safeIso_(attempt.completedAt || attempt.createdAt);
+    if (!lastCompletedAt || new Date(completedAt).getTime() > new Date(lastCompletedAt).getTime()) {
+      lastCompletedAt = completedAt;
+    }
+    activeDates[Utilities.formatDate(new Date(completedAt), 'Africa/Addis_Ababa', 'yyyy-MM-dd')] = true;
+  });
+  var cursorMs = Number(nowMs) || Date.now();
+  var todayKey = Utilities.formatDate(new Date(cursorMs), 'Africa/Addis_Ababa', 'yyyy-MM-dd');
+  if (!activeDates[todayKey]) cursorMs -= 24 * 60 * 60 * 1000;
+  var currentStreak = 0;
+  while (activeDates[Utilities.formatDate(new Date(cursorMs), 'Africa/Addis_Ababa', 'yyyy-MM-dd')]) {
+    currentStreak += 1;
+    cursorMs -= 24 * 60 * 60 * 1000;
+  }
+  return {
+    completedAttempts: completed.length,
+    totalSeconds: totalSeconds,
+    currentStreak: currentStreak,
+    averageScore: completed.length ? Math.round(scoreTotal / completed.length) : 0,
+    bestScore: bestScore,
+    correct: correct,
+    wrong: wrong,
+    skipped: skipped,
+    lastCompletedAt: lastCompletedAt
+  };
+}
+
+function updateProgressSummary_(userId, allAttempts) {
+  if (!SHEET_HEADERS.Progress) {
+    SHEET_HEADERS.Progress = ['userId', 'completedAttempts', 'totalSeconds', 'currentStreak', 'averageScore', 'bestScore', 'correct', 'wrong', 'skipped', 'lastCompletedAt', 'updatedAt'];
+  }
+  if (!masterSpreadsheet_().getSheetByName('Progress')) {
+    ensureSheetWithHeaders_(masterSpreadsheet_(), 'Progress', SHEET_HEADERS.Progress);
+  }
+  var userAttempts = (allAttempts || objects_('Attempts')).filter(function (attempt) {
+    return String(attempt.userId) === String(userId);
+  });
+  var summary = progressSummaryFromAttempts_(userAttempts, Date.now());
+  var changes = {
+    userId: String(userId),
+    completedAttempts: summary.completedAttempts,
+    totalSeconds: summary.totalSeconds,
+    currentStreak: summary.currentStreak,
+    averageScore: summary.averageScore,
+    bestScore: summary.bestScore,
+    correct: summary.correct,
+    wrong: summary.wrong,
+    skipped: summary.skipped,
+    lastCompletedAt: summary.lastCompletedAt,
+    updatedAt: new Date().toISOString()
+  };
+  var existing = findObject_('Progress', 'userId', userId);
+  if (existing && existing._row) updateObjectAtRow_('Progress', existing._row, changes);
+  else appendObject_('Progress', changes);
+  return changes;
+}
+
 function attempts_(payload) {
   var session = requireSession_(payload.token);
-  var attempts = objects_('Attempts').filter(function (attempt) {
+  var userAttempts = objects_('Attempts').filter(function (attempt) {
     return String(attempt.userId) === String(session.userId);
   }).sort(function (left, right) {
     return new Date(right.completedAt || right.createdAt).getTime()
       - new Date(left.completedAt || left.createdAt).getTime();
-  }).slice(0, 1000).map(function (attempt) {
+  });
+  var latestCompleted = userAttempts.filter(function (attempt) {
+    var reason = clean_(attempt.endReason, 30);
+    return reason === 'submitted' || reason === 'time-expired';
+  })[0];
+  var latestCompletedAt = latestCompleted ? safeIso_(latestCompleted.completedAt || latestCompleted.createdAt) : '';
+  var progressSheet = masterSpreadsheet_().getSheetByName('Progress');
+  var storedProgress = progressSheet ? findObject_('Progress', 'userId', session.userId) : null;
+  var storedLastCompletedAt = storedProgress && storedProgress.lastCompletedAt
+    ? safeIso_(storedProgress.lastCompletedAt)
+    : '';
+  var todayKey = Utilities.formatDate(new Date(), 'Africa/Addis_Ababa', 'yyyy-MM-dd');
+  var progressUpdatedKey = storedProgress && storedProgress.updatedAt
+    ? Utilities.formatDate(new Date(storedProgress.updatedAt), 'Africa/Addis_Ababa', 'yyyy-MM-dd')
+    : '';
+  if (!storedProgress || storedLastCompletedAt !== latestCompletedAt || progressUpdatedKey !== todayKey) {
+    withLock_(function () { updateProgressSummary_(session.userId); });
+  }
+  var attempts = userAttempts.slice(0, 1000).map(function (attempt) {
     var correct = Math.max(0, Number(attempt.correct) || 0);
     var wrong = Math.max(0, Number(attempt.wrong) || 0);
     var skipped = Math.max(0, Number(attempt.skipped) || 0);
@@ -699,6 +1131,7 @@ function attempts_(payload) {
     return {
       id: clean_(attempt.id, 120),
       unitId: clean_(attempt.unitId, 120),
+      contentType: clean_(attempt.contentType, 20) === 'past-paper' ? 'past-paper' : 'unit',
       mode: clean_(attempt.mode, 20) === 'exam' ? 'exam' : 'instant',
       questions: [],
       answers: [],
@@ -731,22 +1164,20 @@ function reportQuestions_(payload) {
   var allowedModes = ['instant', 'exam'];
   var seenInRequest = {};
   var normalized = reports.map(function (report) {
-    var id = clean_(report.id, 120);
-    var reporterId = session ? String(session.userId) : clean_(report.reporterId, 120);
+    var id = validatedIdentifier_(report.id, 'report');
+    var reporterId = session ? String(session.userId) : validatedIdentifier_(report.reporterId, 'reporter');
     var category = clean_(report.category, 40);
     var mode = clean_(report.mode, 20);
-    if (!id || seenInRequest[id]) throw new Error('Each report requires a unique ID.');
-    if (!reporterId) throw new Error('A reporter ID is required.');
-    if (!clean_(report.questionId, 120) || !clean_(report.unitId, 120)) throw new Error('Question and unit IDs are required.');
+    if (seenInRequest[id]) throw new Error('Each report requires a unique ID.');
     if (allowedCategories.indexOf(category) < 0) throw new Error('Invalid report category.');
     if (allowedModes.indexOf(mode) < 0) throw new Error('Invalid quiz mode.');
     seenInRequest[id] = true;
 
     return {
       id: id,
-      questionId: clean_(report.questionId, 120),
-      unitId: clean_(report.unitId, 120),
-      subjectId: clean_(report.subjectId, 120),
+      questionId: validatedIdentifier_(report.questionId, 'question'),
+      unitId: validatedIdentifier_(report.unitId, 'unit'),
+      subjectId: report.subjectId ? validatedIdentifier_(report.subjectId, 'subject') : '',
       userId: reporterId,
       isGuest: session ? false : report.isGuest === true,
       verifiedUser: Boolean(session),
@@ -805,7 +1236,9 @@ function answerLabel_(value) {
 
 function version_() {
   var row = objects_('Versions').filter(function (item) { return item.platform === 'android'; })[0];
-  return row || { latestVersion: '1.0.0', minimumVersion: '1.0.0', message: '' };
+  var result = row || { latestVersion: '1.0.0', minimumVersion: '1.0.0', message: '' };
+  result.backendRelease = ZEMEN_BACKEND_RELEASE;
+  return result;
 }
 
 function premiumStatus_(payload) {
@@ -818,6 +1251,7 @@ function premiumStatus_(payload) {
 function premiumOverview_(payload) {
   var entitlement = null;
   var request = null;
+  var includeCommerce = payload.includeCommerce !== false && String(payload.includeCommerce).toLowerCase() !== 'false';
   if (payload.includeEntitlement === true || String(payload.includeEntitlement).toLowerCase() === 'true') {
     var session = requireSession_(payload.token);
     var user = findObject_('Users', 'id', session.userId);
@@ -826,8 +1260,8 @@ function premiumOverview_(payload) {
     request = latestPremiumRequestForUser_(session.userId);
   }
   return {
-    plans: activePremiumPlans_(),
-    paymentMethods: activePremiumPaymentMethods_(),
+    plans: includeCommerce ? activePremiumPlans_() : [],
+    paymentMethods: includeCommerce ? activePremiumPaymentMethods_() : [],
     entitlement: entitlement,
     request: request,
     refreshedAt: new Date().toISOString()
@@ -905,7 +1339,7 @@ function mapPremiumRequest_(request) {
     senderName: String(request.senderName),
     phone: String(request.phone || ''),
     transactionReference: String(request.transactionReference),
-    paymentDate: String(request.paymentDate),
+    paymentDate: dateOnly_(request.paymentDate),
     note: String(request.note || ''),
     status: clean_(request.status, 30).toLowerCase(),
     reviewNote: String(request.reviewNote || ''),
@@ -1107,7 +1541,7 @@ function rejectPremiumRequest_(requestId, note) {
 }
 
 function approvePremiumRequest_(requestId, note) {
-  return withLock_(function () {
+  var result = withLock_(function () {
     var request = findObject_('PremiumRequests', 'id', requestId);
     if (!request) throw new Error('Premium request not found.');
     var previousStatus = clean_(request.status, 30).toLowerCase();
@@ -1167,11 +1601,42 @@ function approvePremiumRequest_(requestId, note) {
     });
     appendPremiumAudit_(request, 'approve', previousStatus, 'approved', reviewer, note, now);
     return {
+      requestId: String(request.id),
       requestCode: String(request.requestCode),
       premiumUntil: premiumUntil,
-      alreadyApproved: alreadyApplied
+      alreadyApproved: alreadyApplied,
+      approvedUserId: String(user.id),
+      approvedPlanName: String(plan.name || 'Zemen Premium')
     };
   });
+  if (!result.alreadyApproved && result.approvedUserId && typeof sendPremiumActivationPush_ === 'function') {
+    try {
+      var delivery = sendPremiumActivationPush_(result.approvedUserId, result.approvedPlanName, result.premiumUntil);
+      if (
+        (!delivery || Number(delivery.accepted) < 1)
+        && typeof enqueuePremiumActivationPush_ === 'function'
+      ) {
+        enqueuePremiumActivationPush_(result.requestId, result.approvedUserId, result.approvedPlanName, result.premiumUntil);
+      }
+    } catch (error) {
+      console.error('Premium was approved, but its push notification failed: ' + String(error && error.message || error));
+      if (typeof enqueuePremiumActivationPush_ === 'function') {
+        enqueuePremiumActivationPush_(result.requestId, result.approvedUserId, result.approvedPlanName, result.premiumUntil);
+      }
+    }
+  }
+  return result;
+}
+
+function dateOnly_(value) {
+  if (value instanceof Date && !isNaN(value.getTime())) {
+    return Utilities.formatDate(value, 'Africa/Addis_Ababa', 'yyyy-MM-dd');
+  }
+  var text = String(value || '').trim();
+  var iso = text.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (iso) return iso[1];
+  var parsed = new Date(text);
+  return isNaN(parsed.getTime()) ? text : Utilities.formatDate(parsed, 'Africa/Addis_Ababa', 'yyyy-MM-dd');
 }
 
 function premiumReviewer_() {
@@ -1420,7 +1885,12 @@ function registerDeviceForUser_(userId, payload) {
   });
 
   var existingIsActive = existing && clean_(existing.status, 20).toLowerCase() === 'active';
-  var accessAllowed = foreignActive.length === 0 && (existingIsActive || categoryActive.length === 0);
+  // An administrator release frees the category slot. The next observation from
+  // this signed-in installation may claim it again when no other phone/tablet is
+  // active. This keeps the admin action useful as an account-level device reset
+  // instead of trapping the student on the access screen with 0/1 devices.
+  var accessAllowed = foreignActive.length === 0
+    && (existingIsActive || categoryActive.length === 0);
   if (accessAllowed && existingIsActive && categoryActive.length) {
     var existingFirstSeen = new Date(existing.firstSeenAt || 0).getTime();
     if (new Date(categoryActive[0].firstSeenAt || 0).getTime() < existingFirstSeen) {
@@ -1493,7 +1963,9 @@ function registerDeviceForUser_(userId, payload) {
   });
   var lastReplacement = replacements.length ? new Date(replacements[0].replacementAt).getTime() : NaN;
   var availableTime = isFinite(lastReplacement) ? lastReplacement + DEVICE_REPLACEMENT_COOLDOWN_MS : nowTime;
-  var blockedReason = accessAllowed ? null : (foreignActive.length ? 'device-linked' : 'device-limit');
+  var blockedReason = accessAllowed
+    ? null
+    : (foreignActive.length ? 'device-linked' : 'device-limit');
   var canReplace = blockedReason === 'device-limit' && nowTime >= availableTime;
   var conflict = foreignActive[0] || categoryActive[0] || null;
   var accountCountOnDevice = Object.keys(accountIdsOnDevice).length;
@@ -1538,6 +2010,9 @@ function replaceCurrentDevice_(payload) {
       return { replaced: true, id: registration.id, policy: registration.policy };
     }
     if (registration.policy.blockedReason !== 'device-limit') {
+      if (registration.policy.blockedReason === 'device-released') {
+        throw new Error('This installation was released from the account. Use the replacement device or contact Zemen Academy support.');
+      }
       throw new Error('This device is linked to another account. Contact Zemen Academy support.');
     }
     if (!registration.policy.canReplace) {
@@ -1594,6 +2069,9 @@ function revokeSessionsForDevice_(userId, installationId) {
     session.deviceAuthorized = false;
     cache.put(sessionCacheKey_(String(session.tokenHash)), JSON.stringify(session), 21600);
   });
+  if (typeof deactivatePushTokensForInstallation_ === 'function') {
+    deactivatePushTokensForInstallation_(userId, installationId);
+  }
 }
 
 function optionalSession_(token) {
@@ -1649,6 +2127,10 @@ function paperAccessTier_(paper) {
   return clean_(paper && paper.accessTier, 20).toLowerCase() === 'free' ? 'free' : 'premium';
 }
 
+function noteAccessTier_(note) {
+  return clean_(note && note.accessTier, 20).toLowerCase() === 'free' ? 'free' : 'premium';
+}
+
 function publicUser_(user) {
   var premium = premiumEntitlementForUser_(user);
   return {
@@ -1670,7 +2152,30 @@ function mapUnit_(item) {
 }
 
 function mapPaper_(item) {
-  return { id: item.id, title: item.title, grade: Number(item.grade), stream: item.stream || undefined, subjectId: item.subjectId, year: Number(item.year), version: Number(item.version) || 1, accessTier: paperAccessTier_(item), downloadUrl: item.downloadUrl || undefined, updatedAt: iso_(item.updatedAt) };
+  var grade = Number(item.grade);
+  return { id: item.id, title: item.title, grade: [9, 10, 11, 12].indexOf(grade) >= 0 ? grade : undefined, stream: item.stream || undefined, subjectId: item.subjectId, subjectName: item.subjectName || item.subjectId, subjectIcon: item.subjectIcon || 'clipboard-text-outline', year: Number(item.year), version: Number(item.version) || 1, questionCount: Number(item.questionCount) || 0, accessTier: paperAccessTier_(item), downloadUrl: item.downloadUrl || undefined, updatedAt: iso_(item.updatedAt) };
+}
+
+function mapStudyNote_(item, includeBody) {
+  var result = {
+    id: item.id,
+    grade: Number(item.grade),
+    stream: item.stream || undefined,
+    subjectId: item.subjectId,
+    unitId: item.unitId || undefined,
+    title: String(item.title || ''),
+    titleAm: String(item.titleAm || item.title || ''),
+    summary: String(item.summary || ''),
+    summaryAm: String(item.summaryAm || item.summary || ''),
+    version: Number(item.version) || 1,
+    accessTier: noteAccessTier_(item),
+    updatedAt: iso_(item.updatedAt)
+  };
+  if (includeBody) {
+    result.body = String(item.body || '').slice(0, 45000);
+    result.bodyAm = String(item.bodyAm || item.body || '').slice(0, 45000);
+  }
+  return result;
 }
 
 function masterSpreadsheet_() {
@@ -1956,6 +2461,12 @@ function constantTimeEqual_(left, right) {
 }
 
 function clean_(value, maxLength) { return String(value || '').trim().slice(0, maxLength); }
+function validEmail_(value) {
+  var email = clean_(value, 160).toLowerCase();
+  return email.length >= 5
+    && !/^[=+\-@]/.test(email)
+    && /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/i.test(email);
+}
 function validatedIdentifier_(value, label) {
   var id = clean_(value, 120);
   if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/.test(id)) {
@@ -1990,13 +2501,16 @@ function rateKey_(email) { return 'login:' + Utilities.base64EncodeWebSafe(Utili
 function enforceSignupRateLimit_(email, installationId) {
   var cache = CacheService.getScriptCache();
   var rules = [
-    { key: 'signup:email:' + rateKey_(email), limit: 5, seconds: 3600 },
-    { key: 'signup:device:' + rateKey_(installationId), limit: 5, seconds: 3600 },
-    { key: 'signup:global', limit: 200, seconds: 600 }
+    // Version 2 intentionally invalidates the old one-hour counters that also
+    // counted failed server-setup checks. Only validated, registration-ready
+    // requests reach this function now.
+    { key: 'signup:v2:email:' + rateKey_(email), limit: 6, seconds: 900 },
+    { key: 'signup:v2:device:' + rateKey_(installationId), limit: 10, seconds: 900 },
+    { key: 'signup:v2:global', limit: 200, seconds: 600 }
   ];
   rules.forEach(function (rule) {
     if (Number(cache.get(rule.key) || 0) >= rule.limit) {
-      throw new Error('Too many attempts. Wait a few minutes and try again.');
+      throw new Error('Too many signup attempts. Wait 15 minutes, then try again.');
     }
   });
   rules.forEach(function (rule) {

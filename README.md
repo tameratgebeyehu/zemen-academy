@@ -92,4 +92,4 @@ The checked-in source passes:
 - `npm test`
 - `npx expo export --platform android`
 
-The app deliberately leaves premium payments, AI, analytics, gamification, flashcards, notes, and social features out of Version 1.
+Version 1 includes manually verified Premium access, reviewed study notes, offline quizzes, progress synchronization, announcements, and student question reporting. AI-generated content is never published without the documented human review and validation workflow.

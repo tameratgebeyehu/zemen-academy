@@ -6,6 +6,7 @@ import { Card, Chip, Icon, Text, useTheme } from 'react-native-paper';
 import { useAppDialog } from '@/components/AppDialog';
 import { PressableScale } from '@/components/Motion';
 import { EmptyState, Screen } from '@/components/Screen';
+import { PREMIUM_ACCESS_BUTTON_LABEL } from '@/config';
 import { useApp } from '@/context/AppContext';
 import { subjectPalette, ui } from '@/data/theme';
 import type { RootStackParamList } from '@/navigation/types';
@@ -51,7 +52,7 @@ export function UnitsScreen({ route, navigation }: Props) {
                   icon: 'crown-outline',
                   actions: [
                     { label: 'Not now', tone: 'neutral' },
-                    { label: 'View Premium', tone: 'primary', onPress: () => navigation.navigate('Premium') },
+                    { label: PREMIUM_ACCESS_BUTTON_LABEL, tone: 'primary', onPress: () => navigation.navigate('Premium') },
                   ],
                 })}
           >

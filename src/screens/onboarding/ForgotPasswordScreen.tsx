@@ -106,6 +106,8 @@ export function ForgotPasswordScreen({ navigation }: Props) {
                   onChangeText={setEmail}
                   autoCapitalize="none"
                   autoComplete="email"
+                  textContentType="username"
+                  importantForAutofill="yes"
                   keyboardType="email-address"
                   mode="outlined"
                   left={<TextInput.Icon icon="email-outline" />}
@@ -134,6 +136,8 @@ export function ForgotPasswordScreen({ navigation }: Props) {
                     secureTextEntry={secure}
                     autoCapitalize="none"
                     autoComplete="new-password"
+                    textContentType="newPassword"
+                    importantForAutofill="yes"
                     mode="outlined"
                     left={<TextInput.Icon icon="lock-outline" />}
                     right={<TextInput.Icon icon={secure ? 'eye-outline' : 'eye-off-outline'} onPress={() => setSecure((value) => !value)} />}
@@ -146,6 +150,8 @@ export function ForgotPasswordScreen({ navigation }: Props) {
                     secureTextEntry={secure}
                     autoCapitalize="none"
                     autoComplete="new-password"
+                    textContentType="newPassword"
+                    importantForAutofill="yes"
                     mode="outlined"
                     left={<TextInput.Icon icon="lock-check-outline" />}
                     outlineStyle={styles.inputOutline}

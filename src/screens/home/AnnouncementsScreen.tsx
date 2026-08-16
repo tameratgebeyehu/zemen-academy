@@ -1,3 +1,4 @@
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import { StyleSheet, View } from 'react-native';
@@ -8,7 +9,10 @@ import { NetworkActivity } from '@/components/NetworkActivity';
 import { EmptyState, Screen } from '@/components/Screen';
 import { useApp } from '@/context/AppContext';
 import { ui } from '@/data/theme';
+import type { RootStackParamList } from '@/navigation/types';
 import { userFacingError } from '@/utils/userFacingError';
+
+type Props = NativeStackScreenProps<RootStackParamList, 'Announcements'>;
 
 function formatPublishedAt(value: string): string {
   const date = new Date(value);
@@ -23,7 +27,7 @@ function formatLastCheck(value: string | null): string {
   return `Last checked at ${date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`;
 }
 
-export function AnnouncementsScreen() {
+export function AnnouncementsScreen({ navigation }: Props) {
   const {
     state,
     announcementSyncing,
@@ -105,7 +109,10 @@ export function AnnouncementsScreen() {
           <PressableScale
             key={announcement.id}
             accessibilityLabel={`${isUnread ? 'Unread announcement' : 'Announcement'}: ${announcement.title}`}
-            onPress={() => markAnnouncementsRead([announcement.id])}
+            onPress={() => {
+              markAnnouncementsRead([announcement.id]);
+              navigation.navigate('AnnouncementDetail', { announcementId: announcement.id });
+            }}
           >
             <Card
               mode="outlined"
@@ -134,8 +141,11 @@ export function AnnouncementsScreen() {
                     {isUnread ? <View style={[styles.unreadDot, { backgroundColor: theme.colors.primary }]} /> : null}
                   </View>
                   <Text variant="labelSmall" style={styles.date}>{formatPublishedAt(announcement.publishedAt)}</Text>
-                  <Text variant="bodyMedium" style={styles.body}>{announcement.body}</Text>
-                  {isUnread ? <Text variant="labelSmall" style={{ color: theme.colors.primary }}>Tap to mark as read</Text> : null}
+                  <Text variant="bodyMedium" style={styles.body} numberOfLines={2}>{announcement.body}</Text>
+                  <View style={styles.detailsHint}>
+                    <Text variant="labelSmall" style={{ color: theme.colors.primary }}>View details</Text>
+                    <Icon source="chevron-right" size={16} color={theme.colors.primary} />
+                  </View>
                 </View>
               </Card.Content>
             </Card>
@@ -168,4 +178,5 @@ const styles = StyleSheet.create({
   unreadDot: { width: 8, height: 8, borderRadius: 4 },
   date: { opacity: 0.56, textTransform: 'uppercase', letterSpacing: 0.5 },
   body: { lineHeight: 21, opacity: 0.82 },
+  detailsHint: { flexDirection: 'row', alignItems: 'center', gap: 2 },
 });

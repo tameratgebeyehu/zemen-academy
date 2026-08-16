@@ -52,8 +52,13 @@ export function IntroScreen({}: Props) {
         data={introSlides}
         keyExtractor={(item) => item.title}
         horizontal
-        pagingEnabled
+        snapToInterval={slideWidth}
+        snapToAlignment="start"
+        decelerationRate="fast"
+        disableIntervalMomentum
         showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.slideList}
+        getItemLayout={(_data, itemIndex) => ({ length: slideWidth, offset: slideWidth * itemIndex, index: itemIndex })}
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={{ itemVisiblePercentThreshold: 60 }}
         renderItem={({ item, index: slideIndex }) => {
@@ -66,7 +71,9 @@ export function IntroScreen({}: Props) {
                   0{slideIndex + 1}
                 </Text>
                 <View style={[styles.iconHalo, { backgroundColor: tone.container }]}>
-                  <Icon source={item.icon} size={58} color={tone.color} />
+                  <View style={[styles.iconCore, { backgroundColor: tone.soft }]}>
+                    <Icon source={item.icon} size={52} color={tone.color} />
+                  </View>
                 </View>
                 <View style={[styles.statCard, { backgroundColor: theme.colors.surface }]}>
                   <Icon source="check-decagram" size={20} color={theme.colors.secondary} />
@@ -107,18 +114,22 @@ const styles = StyleSheet.create({
   screen: { flex: 1, paddingHorizontal: 20 },
   topBar: { minHeight: 62, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   skip: { fontWeight: '700' },
-  slide: { justifyContent: 'center', paddingHorizontal: 4, gap: 30 },
+  slideList: { alignItems: 'stretch' },
+  slide: { justifyContent: 'center', alignItems: 'stretch', paddingHorizontal: 4, gap: 30 },
   visualCard: {
     minHeight: 285,
     borderRadius: ui.radius.xl,
     padding: 22,
     justifyContent: 'center',
     alignItems: 'center',
+    alignSelf: 'center',
+    width: '100%',
     overflow: 'hidden',
     borderWidth: 1,
   },
   slideNumber: { position: 'absolute', left: 22, top: 18, fontWeight: '900', letterSpacing: 1.2 },
-  iconHalo: { width: 132, height: 132, borderRadius: 44, alignItems: 'center', justifyContent: 'center' },
+  iconHalo: { width: 132, height: 132, borderRadius: 66, alignItems: 'center', justifyContent: 'center' },
+  iconCore: { width: 88, height: 88, borderRadius: 44, alignItems: 'center', justifyContent: 'center' },
   statCard: {
     position: 'absolute',
     left: 18,

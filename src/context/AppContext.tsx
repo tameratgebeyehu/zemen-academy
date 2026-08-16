@@ -1,8 +1,9 @@
 import NetInfo from '@react-native-community/netinfo';
 import { createContext, startTransition, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, InteractionManager, Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 
 import { translate, type TranslationKey } from '@/data/translations';
+import { MANUAL_PREMIUM_PAYMENTS_ENABLED, V1_DEFAULT_LANGUAGE } from '@/config';
 import { api, type ProfileSetup } from '@/services/api';
 import {
   cancelZemenNotifications,
@@ -14,13 +15,20 @@ import {
   rememberRegisteredPushToken,
   scheduleDailyReminder,
 } from '@/services/notifications';
-import { defaultState, loadState, saveState, utf8ByteLength } from '@/services/storage';
+import {
+  clearAccountScopedNoteCache,
+  defaultState,
+  loadState,
+  saveState,
+  utf8ByteLength,
+} from '@/services/storage';
 import { normalizeDailyQuizGoal } from '@/utils/studyGoal';
 import type {
   AnswerIndex,
   Announcement,
   DevicePolicyObservation,
   Language,
+  NoteDownload,
   PaperDownload,
   PastPaper,
   PersistedState,
@@ -32,8 +40,10 @@ import type {
   Question,
   QuestionReportCategory,
   QuizAttempt,
+  QuizContentType,
   QuizMode,
   Stream,
+  StudyNote,
   Subject,
   ThemePreference,
   Unit,
@@ -45,13 +55,21 @@ import {
   readPremiumOfflineLease,
   writePremiumOfflineLease,
 } from '@/services/premiumLease';
-import { deviceRegistrationIsFresh } from '@/utils/devicePolicy';
+import {
+  acknowledgePremiumRequest,
+  acknowledgedPremiumRequest,
+} from '@/services/premiumCelebration';
+import { devicePolicyRevokesLocalContent, deviceRegistrationIsFresh } from '@/utils/devicePolicy';
 import { applyPremiumEntitlement } from '@/utils/premium';
 import { createPremiumOfflineLease, premiumClaimNeedsVerification } from '@/utils/premiumLease';
 import { createQuestionReport } from '@/utils/questionReports';
 import { canAccessPaper, canAccessUnit } from '@/utils/access';
 import { userFacingError } from '@/utils/userFacingError';
 import { mergeSyncedAttempts } from '@/utils/attemptSync';
+import { compactStoredAttempts } from '@/utils/attemptRetention';
+import { canAccessStudyNote } from '@/utils/notes';
+import { retainFreeDownloads } from '@/utils/downloads';
+import { runWhenIdle, type IdleTask } from '@/utils/idleTask';
 import {
   announcementRefreshDelay,
   announcementsEqual,
@@ -64,6 +82,7 @@ import {
 
 interface RecordAttemptInput {
   unitId: string;
+  contentType?: QuizContentType;
   mode: QuizMode;
   questions: QuizAttempt['questions'];
   answers: Array<AnswerIndex | null>;
@@ -91,6 +110,7 @@ interface AppContextValue {
   premiumPlans: PremiumPlan[];
   premiumPaymentMethods: PremiumPaymentMethod[];
   premiumRequest: PremiumRequest | null;
+  premiumCelebration: { requestId: string; planName: string; until: string | null } | null;
   devicePolicyObservation: DevicePolicyObservation | null;
   subjects: Subject[];
   unitsForSubject: (subjectId: string) => Unit[];
@@ -109,9 +129,11 @@ interface AppContextValue {
   logout: () => Promise<void>;
   isUnitUnlocked: (unit: Unit) => boolean;
   questionsForUnit: (unitId: string) => Question[];
-  prepareOnlineQuiz: (unitId: string) => Promise<void>;
+  prepareOnlineQuiz: (unitId: string, contentType?: QuizContentType) => Promise<void>;
   downloadUnit: (unitId: string) => Promise<void>;
   deleteUnitDownload: (unitId: string) => void;
+  downloadNote: (note: StudyNote) => Promise<void>;
+  deleteNoteDownload: (noteId: string) => void;
   downloadPaper: (paperId: string) => Promise<void>;
   deletePaperDownload: (paperId: string) => void;
   recordAttempt: (input: RecordAttemptInput) => string;
@@ -126,6 +148,7 @@ interface AppContextValue {
   markAnnouncementsRead: (ids: string[]) => void;
   dismissAnnouncementNotice: () => void;
   dismissWelcomeAnimation: () => void;
+  dismissPremiumCelebration: () => void;
   syncPushRegistration: () => Promise<boolean>;
   storageBytes: number;
 }
@@ -165,7 +188,7 @@ function recordArraysEqual<T extends { id: string }>(left: T[], right: T[]): boo
 }
 
 const CATALOG_REFRESH_INTERVAL_MS = 2 * 60_000;
-const PREMIUM_REFRESH_INTERVAL_MS = 5 * 60_000;
+const PREMIUM_REFRESH_INTERVAL_MS = 60_000;
 const PROGRESS_REFRESH_INTERVAL_MS = 2 * 60_000;
 const DEVICE_OBSERVATION_INTERVAL_MS = 12 * 60 * 60_000;
 
@@ -177,6 +200,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [announcementSyncing, setAnnouncementSyncing] = useState(false);
   const [announcementSyncError, setAnnouncementSyncError] = useState<string | null>(null);
   const [lastAnnouncementSyncAt, setLastAnnouncementSyncAt] = useState<string | null>(null);
+  const [premiumCelebration, setPremiumCelebration] = useState<{
+    requestId: string;
+    planName: string;
+    until: string | null;
+  } | null>(null);
   const syncInProgress = useRef(false);
   const pushRegistrationInProgress = useRef(false);
   const announcementRefreshPromise = useRef<Promise<void> | null>(null);
@@ -187,6 +215,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const catalogLastSuccessfulAt = useRef<string | undefined>(defaultState.lastCatalogSync);
   const announcementIds = useRef(new Set(defaultState.knownAnnouncementIds));
   const persistedState = useRef<PersistedState | null>(null);
+  const checkedPremiumCelebration = useRef<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -248,9 +277,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     // Large offline question sets are expensive to stringify on lower-powered
     // phones. Let the current gesture/navigation finish before persisting.
     const snapshot = state;
-    let interactionTask: ReturnType<typeof InteractionManager.runAfterInteractions> | undefined;
+    let interactionTask: IdleTask | undefined;
     const timer = setTimeout(() => {
-      interactionTask = InteractionManager.runAfterInteractions(() => {
+      interactionTask = runWhenIdle(() => {
         void saveState(snapshot).then(() => {
           persistedState.current = snapshot;
         }).catch(() => undefined);
@@ -338,15 +367,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try {
       if (state.user && !state.user.isGuest) {
         const requestedUserId = state.user.id;
-        const pending = state.attempts.filter((attempt) => !attempt.synced);
+        const pending = state.attempts.filter((attempt) => !attempt.synced).slice(0, 10);
         if (pending.length) {
           try {
             const { syncedIds } = await api.syncAttempts(pending);
             setState((current) => ({
               ...current,
-              attempts: current.attempts.map((attempt) => (
+              attempts: compactStoredAttempts(current.attempts.map((attempt) => (
                 syncedIds.includes(attempt.id) ? { ...attempt, synced: true } : attempt
-              )),
+              ))),
             }));
           } catch {
             // Attempts remain queued while report delivery can still continue.
@@ -421,7 +450,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
       const nextToken = await getExpoPushTokenForDevice();
       if (!nextToken) return false;
-      await api.registerPushToken(nextToken, Platform.OS);
+      const identity = await deviceRegistrationIdentity();
+      if (!identity) return false;
+      await api.registerPushToken(nextToken, Platform.OS, identity.installationId);
       await rememberRegisteredPushToken(nextToken);
       if (previousToken && previousToken !== nextToken) {
         await api.unregisterPushToken(previousToken).catch(() => undefined);
@@ -448,7 +479,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!hydrated || !state.user || state.user.isGuest || !api.isConfigured) return undefined;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    let interactionTask: ReturnType<typeof InteractionManager.runAfterInteractions> | undefined;
+    let interactionTask: IdleTask | undefined;
 
     const run = () => {
       if (!cancelled && AppState.currentState === 'active') void sync();
@@ -456,7 +487,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const queue = (delay = 0) => {
       if (timer) clearTimeout(timer);
       interactionTask?.cancel();
-      interactionTask = InteractionManager.runAfterInteractions(() => {
+      interactionTask = runWhenIdle(() => {
         timer = setTimeout(run, delay);
       });
     };
@@ -538,13 +569,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const requestedUserId = state.user.id;
     const includeEntitlement = !state.user.isGuest;
     const refresh = (async () => {
-      const overview = await api.premiumOverview(includeEntitlement);
+      const overview = await api.premiumOverview(includeEntitlement, MANUAL_PREMIUM_PAYMENTS_ENABLED);
       const offlineLease = overview.entitlement && includeEntitlement
         ? createPremiumOfflineLease(requestedUserId, overview.entitlement, overview.refreshedAt)
         : null;
       if (overview.entitlement && includeEntitlement) {
         if (offlineLease) await writePremiumOfflineLease(offlineLease).catch(() => undefined);
         else await clearPremiumOfflineLease().catch(() => undefined);
+      }
+      const confirmedAccessEnded = Boolean(
+        overview.entitlement
+        && !overview.entitlement.isPremium
+        && overview.entitlement.status !== 'active',
+      );
+      if (confirmedAccessEnded) {
+        await clearAccountScopedNoteCache(requestedUserId).catch(() => undefined);
       }
       startTransition(() => {
         setState((current) => {
@@ -571,6 +610,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           const user = canApplyEntitlement && current.user && overview.entitlement
             ? applyPremiumEntitlement(current.user, overview.entitlement)
             : current.user;
+          const accessEnded = Boolean(current.user?.isPremium && user && !user.isPremium && confirmedAccessEnded);
+          const retainedDownloads = accessEnded ? retainFreeDownloads(current) : null;
           if (
             plans === current.premiumPlans
             && paymentMethods === current.premiumPaymentMethods
@@ -582,6 +623,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           ) return current;
           return {
             ...current,
+            ...(retainedDownloads ?? {}),
             user,
             premiumPlans: plans,
             premiumPaymentMethods: paymentMethods,
@@ -605,7 +647,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!hydrated || !state.user || !api.isConfigured) return undefined;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    let interactionTask: ReturnType<typeof InteractionManager.runAfterInteractions> | undefined;
+    let interactionTask: IdleTask | undefined;
 
     const run = () => {
       if (!cancelled && AppState.currentState === 'active') {
@@ -615,7 +657,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const queue = (delay = 0) => {
       if (timer) clearTimeout(timer);
       interactionTask?.cancel();
-      interactionTask = InteractionManager.runAfterInteractions(() => {
+      interactionTask = runWhenIdle(() => {
         timer = setTimeout(run, delay);
       });
     };
@@ -640,6 +682,38 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [hydrated, refreshPremium, state.user?.id]);
 
   useEffect(() => {
+    const user = state.user;
+    const request = state.premiumRequest;
+    if (!hydrated || !user || user.isGuest || !user.isPremium || request?.status !== 'approved') {
+      if (!user || user.isGuest) {
+        checkedPremiumCelebration.current = null;
+        setPremiumCelebration(null);
+      }
+      return undefined;
+    }
+
+    const checkId = `${user.id}:${request.id}`;
+    if (checkedPremiumCelebration.current === checkId) return undefined;
+    checkedPremiumCelebration.current = checkId;
+    let cancelled = false;
+    void acknowledgedPremiumRequest(user.id)
+      .then((acknowledgedRequestId) => {
+        if (cancelled || acknowledgedRequestId === request.id) return;
+        const planName = state.premiumPlans.find((plan) => plan.id === user.premiumPlanId)?.name
+          ?? 'Zemen Premium';
+        setPremiumCelebration({
+          requestId: request.id,
+          planName,
+          until: user.premiumUntil ?? null,
+        });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrated, state.premiumPlans, state.premiumRequest, state.user]);
+
+  useEffect(() => {
     if (!hydrated || !state.user || state.user.isGuest || !state.user.isPremium) return undefined;
 
     const enforceLease = async () => {
@@ -650,12 +724,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         reason: 'missing' as const,
       }));
       if (result.valid) return;
+      if (result.reason === 'subscription-expired') {
+        await clearAccountScopedNoteCache(userId).catch(() => undefined);
+      }
       setState((current) => {
         if (!current.user || current.user.id !== userId || !current.user.isPremium) return current;
         const until = current.user.premiumUntil ? new Date(current.user.premiumUntil).getTime() : Number.NaN;
         const subscriptionExpired = Number.isFinite(until) && until <= Date.now();
+        const retainedDownloads = subscriptionExpired ? retainFreeDownloads(current) : null;
         return {
           ...current,
+          ...(retainedDownloads ?? {}),
           user: {
             ...current.user,
             isPremium: false,
@@ -698,10 +777,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const identity = await deviceRegistrationIdentity();
       if (!identity) return;
       const result = await api.registerDevice(identity);
+      const localAccessRevoked = devicePolicyRevokesLocalContent(result.policy);
+      if (localAccessRevoked) {
+        await clearPremiumOfflineLease().catch(() => undefined);
+        await clearAccountScopedNoteCache(requestedUserId).catch(() => undefined);
+        setOnlineQuestions({});
+      }
       setState((current) => {
         if (!current.user || current.user.isGuest || current.user.id !== requestedUserId) return current;
         return {
           ...current,
+          ...(localAccessRevoked ? {
+            unitDownloads: [],
+            noteDownloads: [],
+            paperDownloads: [],
+            attempts: [],
+            pendingQuestionReports: [],
+            premiumOfflineAccessUntil: undefined,
+            premiumVerificationRequired: false,
+          } : {}),
           devicePolicyObservation: result.policy,
           lastDeviceRegistrationAt: result.policy.observedAt,
           lastDeviceRegistrationUserId: requestedUserId,
@@ -743,7 +837,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!hydrated || !state.user || state.user.isGuest || !api.isConfigured) return undefined;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    let interactionTask: ReturnType<typeof InteractionManager.runAfterInteractions> | undefined;
+    let interactionTask: IdleTask | undefined;
 
     const run = () => {
       if (!cancelled && AppState.currentState === 'active') {
@@ -753,7 +847,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const queue = (delay = 0) => {
       if (timer) clearTimeout(timer);
       interactionTask?.cancel();
-      interactionTask = InteractionManager.runAfterInteractions(() => {
+      interactionTask = runWhenIdle(() => {
         timer = setTimeout(run, delay);
       });
     };
@@ -778,6 +872,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [hydrated, state.user?.id, state.user?.isGuest, syncDeviceObservation]);
 
   const submitPremiumRequest = useCallback(async (input: PremiumRequestInput): Promise<PremiumRequest> => {
+    if (!MANUAL_PREMIUM_PAYMENTS_ENABLED) throw new Error('Premium purchasing is not available in this app version.');
     if (!state.user || state.user.isGuest) throw new Error('Sign in before submitting a premium request.');
     const result = await api.createPremiumRequest(input);
     setState((current) => ({ ...current, premiumRequest: result.request }));
@@ -865,7 +960,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!hydrated || !state.user || !state.profileReady || !api.isConfigured) return undefined;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    let interactionTask: ReturnType<typeof InteractionManager.runAfterInteractions> | undefined;
+    let interactionTask: IdleTask | undefined;
 
     const run = () => {
       if (!cancelled && AppState.currentState === 'active') {
@@ -875,7 +970,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const queue = (delay = 0) => {
       if (timer) clearTimeout(timer);
       interactionTask?.cancel();
-      interactionTask = InteractionManager.runAfterInteractions(() => {
+      interactionTask = runWhenIdle(() => {
         timer = setTimeout(run, delay);
       });
     };
@@ -911,6 +1006,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return questions;
   }, [state.catalog.units, state.user?.isPremium]);
 
+  const fetchPastPaperQuestions = useCallback(async (paperId: string): Promise<{ paper: PastPaper; questions: Question[] }> => {
+    const paper = state.catalog.pastPapers.find((item) => item.id === paperId);
+    if (!paper) throw new Error('This entrance paper is no longer available.');
+    if (!canAccessPaper(state.user, paper)) throw new Error('Premium access is required for this entrance paper.');
+    if (!api.isConfigured) throw new Error('Connect the Apps Script backend to take this entrance exam online.');
+    const response = await api.paper(paperId, paper.version);
+    if (!response.questions.length) throw new Error('Questions have not been published for this entrance paper yet.');
+    return response;
+  }, [state.catalog.pastPapers, state.user?.isPremium]);
+
   const rememberLearningPosition = useCallback((subjectId: string, unitId?: string) => {
     setState((current) => {
       if (current.lastViewedSubjectId === subjectId && current.lastViewedUnitId === unitId) return current;
@@ -932,6 +1037,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     premiumPlans: state.premiumPlans,
     premiumPaymentMethods: state.premiumPaymentMethods,
     premiumRequest: state.premiumRequest ?? null,
+    premiumCelebration,
     devicePolicyObservation: state.devicePolicyObservation ?? null,
     subjects,
     unitsForSubject,
@@ -953,9 +1059,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (loginLease) await writePremiumOfflineLease(loginLease).catch(() => undefined);
       else await clearPremiumOfflineLease().catch(() => undefined);
       setState((current) => ({
-        ...current,
+        ...(current.localDataOwnerId && current.localDataOwnerId === result.user.id
+          ? current
+          : {
+              ...current,
+              unitDownloads: [],
+              noteDownloads: [],
+              paperDownloads: [],
+              attempts: [],
+              pendingQuestionReports: [],
+            }),
         user: result.user,
-        preferences: result.preferences ? { ...current.preferences, ...result.preferences } : current.preferences,
+        localDataOwnerId: result.user.id,
+        preferences: result.preferences
+          ? { ...current.preferences, ...result.preferences, language: V1_DEFAULT_LANGUAGE }
+          : { ...current.preferences, language: V1_DEFAULT_LANGUAGE },
         profileReady: Boolean(result.preferences),
         announcements: current.announcements.filter((item) => item.kind !== 'welcome' || item.ownerUserId === result.user.id),
         pendingWelcomeUserId: undefined,
@@ -978,7 +1096,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setState((current) => ({
         ...current,
         user: result.user,
+        localDataOwnerId: result.user.id,
         profileReady: false,
+        unitDownloads: [],
+        noteDownloads: [],
+        paperDownloads: [],
+        attempts: [],
+        pendingQuestionReports: [],
         announcements: current.announcements.filter((item) => item.kind !== 'welcome' && item.id !== 'welcome-v1'),
         readAnnouncementIds: current.readAnnouncementIds.filter((id) => id !== `welcome-${result.user.id}`),
         pendingWelcomeUserId: result.user.id,
@@ -995,18 +1119,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     continueAsGuest: () => {
       void clearPremiumOfflineLease().catch(() => undefined);
+      const guestId = `guest-${Date.now()}`;
       setState((current) => ({
         ...current,
         user: {
-          id: `guest-${Date.now()}`,
+          id: guestId,
           name: 'Guest Student',
           isGuest: true,
           isPremium: false,
         },
+        localDataOwnerId: guestId,
+        unitDownloads: [],
+        noteDownloads: [],
+        paperDownloads: [],
+        attempts: [],
+        pendingQuestionReports: [],
         profileReady: current.profileReady,
         premiumRequest: undefined,
         premiumOfflineAccessUntil: undefined,
         premiumVerificationRequired: false,
+        devicePolicyObservation: undefined,
+        lastDeviceRegistrationAt: undefined,
+        lastDeviceRegistrationUserId: undefined,
         lastViewedSubjectId: undefined,
         lastViewedUnitId: undefined,
       }));
@@ -1020,13 +1154,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         premiumRequest: undefined,
         premiumOfflineAccessUntil: undefined,
         premiumVerificationRequired: false,
+        devicePolicyObservation: undefined,
+        lastDeviceRegistrationAt: undefined,
+        lastDeviceRegistrationUserId: undefined,
         lastViewedSubjectId: undefined,
         lastViewedUnitId: undefined,
       }));
     },
 
     completeProfile: async (setup) => {
-      const preferences: Preferences = { ...state.preferences, ...setup };
+      const preferences: Preferences = { ...state.preferences, ...setup, language: V1_DEFAULT_LANGUAGE };
       setState((current) => {
         if (!current.user || current.user.isGuest || current.pendingWelcomeUserId !== current.user.id) {
           return { ...current, preferences, profileReady: true };
@@ -1059,10 +1196,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       preferences: { ...current.preferences, theme },
     })),
 
-    updateLanguage: (language) => setState((current) => ({
-      ...current,
-      preferences: { ...current.preferences, language },
-    })),
+    updateLanguage: (language) => {
+      void language;
+      setState((current) => ({
+        ...current,
+        preferences: { ...current.preferences, language: V1_DEFAULT_LANGUAGE },
+      }));
+    },
 
     updateDailyQuizGoal: async (goal) => {
       const dailyQuizGoal = normalizeDailyQuizGoal(goal);
@@ -1098,21 +1238,31 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     rememberLearningPosition,
 
     logout: async () => {
+      const ownerId = state.user?.id;
       const pushToken = await registeredPushToken().catch(() => null);
       await api.logout(pushToken);
       await forgetRegisteredPushToken().catch(() => undefined);
       await clearPremiumOfflineLease().catch(() => undefined);
+      if (ownerId) await clearAccountScopedNoteCache(ownerId).catch(() => undefined);
       setOnlineQuestions({});
       setState((current) => ({
         ...current,
         user: null,
+        localDataOwnerId: undefined,
         profileReady: false,
+        unitDownloads: [],
+        noteDownloads: [],
+        paperDownloads: [],
         attempts: [],
+        pendingQuestionReports: [],
         announcements: current.announcements.filter((item) => item.kind !== 'welcome'),
         pendingWelcomeUserId: undefined,
         premiumRequest: undefined,
         premiumOfflineAccessUntil: undefined,
         premiumVerificationRequired: false,
+        devicePolicyObservation: undefined,
+        lastDeviceRegistrationAt: undefined,
+        lastDeviceRegistrationUserId: undefined,
         lastViewedSubjectId: undefined,
         lastViewedUnitId: undefined,
       }));
@@ -1122,13 +1272,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     questionsForUnit: (unitId) => (
       state.unitDownloads.find((item) => item.unit.id === unitId)?.questions
+      ?? state.paperDownloads.find((item) => item.paper.id === unitId)?.questions
       ?? onlineQuestions[unitId]
       ?? []
     ),
 
-    prepareOnlineQuiz: async (unitId) => {
-      if (state.unitDownloads.some((item) => item.unit.id === unitId) || onlineQuestions[unitId]?.length) return;
-      const questions = await fetchUnitQuestions(unitId);
+    prepareOnlineQuiz: async (unitId, contentType = 'unit') => {
+      const downloaded = contentType === 'past-paper'
+        ? state.paperDownloads.some((item) => item.paper.id === unitId && item.questions.length > 0)
+        : state.unitDownloads.some((item) => item.unit.id === unitId);
+      if (downloaded || onlineQuestions[unitId]?.length) return;
+      const questions = contentType === 'past-paper'
+        ? (await fetchPastPaperQuestions(unitId)).questions
+        : await fetchUnitQuestions(unitId);
       setOnlineQuestions((current) => ({ ...current, [unitId]: questions }));
     },
 
@@ -1145,6 +1301,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const download: UnitDownload = { ...base, byteSize: utf8ByteLength(base) };
       setState((current) => ({
         ...current,
+        localDataOwnerId: current.user?.id ?? current.localDataOwnerId,
         unitDownloads: [download, ...current.unitDownloads.filter((item) => item.unit.id !== unitId)],
       }));
     },
@@ -1154,26 +1311,46 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       unitDownloads: current.unitDownloads.filter((item) => item.unit.id !== unitId),
     })),
 
+    downloadNote: async (note) => {
+      if (!canAccessStudyNote(state.user, note)) {
+        throw new Error('Premium access is required to download this study note.');
+      }
+      if (!note.body?.trim()) throw new Error('This study note is not ready for offline use yet.');
+      const base = { note, downloadedAt: new Date().toISOString() };
+      const download: NoteDownload = { ...base, byteSize: utf8ByteLength(base) };
+      setState((current) => ({
+        ...current,
+        localDataOwnerId: current.user?.id ?? current.localDataOwnerId,
+        noteDownloads: [download, ...current.noteDownloads.filter((item) => item.note.id !== note.id)],
+      }));
+    },
+
+    deleteNoteDownload: (noteId) => setState((current) => ({
+      ...current,
+      noteDownloads: current.noteDownloads.filter((item) => item.note.id !== noteId),
+    })),
+
     downloadPaper: async (paperId) => {
       const cached = state.catalog.pastPapers.find((item) => item.id === paperId);
       if (!cached) throw new Error('This paper is no longer available.');
       if (!canAccessPaper(state.user, cached)) throw new Error('Premium access is required for this past paper.');
       let paper: PastPaper = cached;
-      let content = cached.content ?? '';
+      let questions = state.paperDownloads.find((item) => item.paper.id === paperId)?.questions ?? [];
       if (api.isConfigured) {
         try {
           const remote = await api.paper(paperId, cached.version);
           paper = remote.paper;
-          content = remote.content;
+          questions = remote.questions;
         } catch (error) {
-          if (!content) throw error;
+          if (!questions.length) throw error;
         }
       }
-      if (!content) throw new Error('This paper has not been published yet.');
-      const base = { paper, content, downloadedAt: new Date().toISOString() };
+      if (!questions.length) throw new Error('Questions have not been published for this entrance paper yet.');
+      const base = { paper, questions, downloadedAt: new Date().toISOString() };
       const download: PaperDownload = { ...base, byteSize: utf8ByteLength(base) };
       setState((current) => ({
         ...current,
+        localDataOwnerId: current.user?.id ?? current.localDataOwnerId,
         paperDownloads: [download, ...current.paperDownloads.filter((item) => item.paper.id !== paperId)],
       }));
     },
@@ -1192,11 +1369,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         synced: Boolean(state.user?.isGuest),
       };
       const attemptedUnit = state.catalog.units.find((unit) => unit.id === attempt.unitId);
+      const attemptedPaper = state.catalog.pastPapers.find((paper) => paper.id === attempt.unitId);
       setState((current) => ({
         ...current,
-        attempts: [attempt, ...current.attempts],
-        lastViewedSubjectId: attemptedUnit?.subjectId ?? current.lastViewedSubjectId,
-        lastViewedUnitId: attempt.unitId,
+        localDataOwnerId: current.user?.id ?? current.localDataOwnerId,
+        attempts: compactStoredAttempts([attempt, ...current.attempts]),
+        lastViewedSubjectId: attemptedUnit?.subjectId ?? attemptedPaper?.subjectId ?? current.lastViewedSubjectId,
+        lastViewedUnitId: attempt.contentType === 'past-paper' ? current.lastViewedUnitId : attempt.unitId,
       }));
       if (!state.user?.isGuest && api.isConfigured) {
         setTimeout(() => {
@@ -1204,7 +1383,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             if (!syncedIds.includes(id)) return;
             setState((current) => ({
               ...current,
-              attempts: current.attempts.map((item) => item.id === id ? { ...item, synced: true } : item),
+              attempts: compactStoredAttempts(current.attempts.map((item) => (
+                item.id === id ? { ...item, synced: true } : item
+              ))),
             }));
           }).catch(() => undefined);
         }, 0);
@@ -1214,9 +1395,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     reportQuestion: async (input) => {
       const unit = state.catalog.units.find((item) => item.id === input.question.unitId);
+      const paper = state.catalog.pastPapers.find((item) => item.id === input.question.unitId);
       const report = createQuestionReport({
         ...input,
-        subjectId: unit?.subjectId ?? '',
+        subjectId: unit?.subjectId ?? paper?.subjectId ?? '',
         reporterId: state.user?.id ?? `guest-${Date.now()}`,
         isGuest: state.user?.isGuest ?? true,
       });
@@ -1270,11 +1452,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       pendingWelcomeUserId: undefined,
     })),
 
+    dismissPremiumCelebration: () => {
+      const celebration = premiumCelebration;
+      const userId = state.user?.id;
+      setPremiumCelebration(null);
+      if (celebration && userId) {
+        void acknowledgePremiumRequest(userId, celebration.requestId).catch(() => undefined);
+      }
+    },
+
     syncPushRegistration: () => registerPushDevice(true),
 
     storageBytes: state.unitDownloads.reduce((sum, item) => sum + item.byteSize, 0)
+      + state.noteDownloads.reduce((sum, item) => sum + item.byteSize, 0)
       + state.paperDownloads.reduce((sum, item) => sum + item.byteSize, 0),
-  }), [announcementNotice, announcementSyncError, announcementSyncing, cancelPremiumRequest, fetchUnitQuestions, hydrated, lastAnnouncementSyncAt, onlineQuestions, refreshAnnouncements, refreshCatalog, refreshCatalogFor, refreshPremium, registerPushDevice, rememberLearningPosition, replaceCurrentDevice, state, subjects, submitPremiumRequest, sync, syncDeviceObservation, unitsForSubject]);
+  }), [announcementNotice, announcementSyncError, announcementSyncing, cancelPremiumRequest, fetchPastPaperQuestions, fetchUnitQuestions, hydrated, lastAnnouncementSyncAt, onlineQuestions, premiumCelebration, refreshAnnouncements, refreshCatalog, refreshCatalogFor, refreshPremium, registerPushDevice, rememberLearningPosition, replaceCurrentDevice, state, subjects, submitPremiumRequest, sync, syncDeviceObservation, unitsForSubject]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }

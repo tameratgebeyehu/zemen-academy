@@ -5,15 +5,21 @@ var SHEET_HEADERS = {
   ContentSources: ['subjectId', 'spreadsheetId', 'spreadsheetName', 'status', 'updatedAt'],
   Units: ['id', 'subjectId', 'number', 'title', 'titleAm', 'questionCount', 'version', 'status', 'updatedAt', 'accessTier'],
   Questions: ['id', 'unitId', 'question', 'optionA', 'optionB', 'optionC', 'optionD', 'correctAnswer', 'explanation', 'difficulty', 'order', 'status', 'updatedAt', 'externalId', 'topic', 'sourceReference', 'importId'],
-  PastPapers: ['id', 'title', 'grade', 'stream', 'subjectId', 'year', 'version', 'content', 'downloadUrl', 'status', 'updatedAt', 'accessTier'],
-  Announcements: ['id', 'title', 'body', 'audienceGrade', 'audienceStream', 'publishedAt', 'status'],
+  PastPapers: ['id', 'title', 'grade', 'stream', 'subjectId', 'year', 'version', 'content', 'downloadUrl', 'status', 'updatedAt', 'accessTier', 'questionCount', 'subjectName', 'subjectIcon'],
+  PastPaperQuestions: ['id', 'paperId', 'question', 'optionA', 'optionB', 'optionC', 'optionD', 'correctAnswer', 'explanation', 'difficulty', 'order', 'status', 'updatedAt', 'externalId', 'topic', 'sourceReference', 'importId'],
+  Notes: ['id', 'grade', 'stream', 'subjectId', 'unitId', 'title', 'titleAm', 'summary', 'summaryAm', 'body', 'bodyAm', 'version', 'status', 'updatedAt', 'accessTier'],
+  NoteDrafts: ['draftId', 'targetId', 'importId', 'grade', 'stream', 'subjectId', 'unitId', 'title', 'titleAm', 'summary', 'summaryAm', 'body', 'bodyAm', 'accessTier', 'createdAt'],
+  Announcements: ['id', 'title', 'body', 'audienceGrade', 'audienceStream', 'publishedAt', 'status', 'kind', 'actionType', 'targetId', 'actionLabel'],
   Versions: ['platform', 'latestVersion', 'minimumVersion', 'updateUrl', 'message', 'updatedAt'],
   Sessions: ['id', 'userId', 'tokenHash', 'expiresAt', 'revokedAt', 'createdAt', 'installationId', 'deviceAuthorized'],
   PasswordResets: ['id', 'userId', 'emailHash', 'codeHash', 'expiresAt', 'attempts', 'usedAt', 'createdAt'],
-  Attempts: ['id', 'userId', 'unitId', 'mode', 'answersJson', 'correct', 'wrong', 'skipped', 'durationSeconds', 'endReason', 'completedAt', 'createdAt'],
+  Attempts: ['id', 'userId', 'unitId', 'mode', 'answersJson', 'correct', 'wrong', 'skipped', 'durationSeconds', 'endReason', 'completedAt', 'createdAt', 'contentType'],
+  Progress: ['userId', 'completedAttempts', 'totalSeconds', 'currentStreak', 'averageScore', 'bestScore', 'correct', 'wrong', 'skipped', 'lastCompletedAt', 'updatedAt'],
+  StudyPlans: ['userId', 'planJson', 'updatedAt'],
   QuestionReports: ['id', 'questionId', 'unitId', 'subjectId', 'userId', 'isGuest', 'verifiedUser', 'mode', 'category', 'note', 'questionNumber', 'selectedAnswer', 'correctAnswer', 'question', 'optionsJson', 'status', 'createdAt', 'updatedAt'],
-  DeviceTokens: ['id', 'userId', 'expoPushToken', 'platform', 'status', 'lastSuccessAt', 'lastError', 'lastErrorAt', 'createdAt', 'updatedAt'],
+  DeviceTokens: ['id', 'userId', 'expoPushToken', 'platform', 'status', 'lastSuccessAt', 'lastError', 'lastErrorAt', 'createdAt', 'updatedAt', 'installationId'],
   PushQueue: ['id', 'announcementId', 'status', 'attempts', 'nextAttemptAt', 'lastError', 'createdAt', 'updatedAt'],
+  PremiumPushQueue: ['id', 'requestId', 'userId', 'planName', 'premiumUntil', 'status', 'attempts', 'nextAttemptAt', 'lastError', 'createdAt', 'updatedAt'],
   PremiumPlans: ['id', 'name', 'durationDays', 'priceEtb', 'badge', 'description', 'status', 'order', 'createdAt', 'updatedAt'],
   PaymentMethods: ['id', 'name', 'accountName', 'accountNumber', 'instructions', 'status', 'order', 'updatedAt'],
   PremiumRequests: ['id', 'requestCode', 'userId', 'email', 'planId', 'amountEtb', 'bank', 'senderName', 'transactionReference', 'paymentDate', 'note', 'status', 'reviewedBy', 'reviewedAt', 'createdAt', 'updatedAt', 'reviewNote', 'durationDays', 'phone'],
@@ -28,12 +34,51 @@ var SUBJECT_CONTENT_HEADERS = {
   ImportHistory: ['id', 'unitId', 'fileName', 'totalRows', 'importedRows', 'rejectedRows', 'status', 'createdAt', 'completedAt']
 };
 
+var SECURITY_SENSITIVE_SHEETS = [
+  'Users', 'Sessions', 'PasswordResets', 'Attempts', 'Progress', 'StudyPlans',
+  'QuestionReports', 'DeviceTokens', 'PushQueue', 'PremiumPushQueue',
+  'PremiumRequests', 'PremiumAudit', 'UserDevices'
+];
+
+var NOTE_EDITOR_SHEET = 'NoteEditor';
+var NOTE_EDITOR_FIELDS = [
+  { row: 3, key: 'grade', label: 'Grade *' },
+  { row: 4, key: 'stream', label: 'Stream' },
+  { row: 5, key: 'subjectId', label: 'Subject ID *' },
+  { row: 6, key: 'unitId', label: 'Unit ID (optional)' },
+  { row: 7, key: 'title', label: 'English title *' },
+  { row: 8, key: 'titleAm', label: 'Amharic title' },
+  { row: 9, key: 'summary', label: 'English summary *' },
+  { row: 10, key: 'summaryAm', label: 'Amharic summary' },
+  { row: 11, key: 'body', label: 'English note *' },
+  { row: 12, key: 'bodyAm', label: 'Amharic note' },
+  { row: 13, key: 'accessTier', label: 'Access *' },
+  { row: 14, key: 'id', label: 'Note ID (automatic)' },
+  { row: 15, key: 'version', label: 'Next version' },
+  { row: 16, key: 'updatedAt', label: 'Draft saved at' }
+];
+
+var PAST_PAPER_EDITOR_SHEET = 'PastPaperEditor';
+var PAST_PAPER_EDITOR_FIELDS = [
+  { row: 3, key: 'grade', label: 'Grade *' },
+  { row: 4, key: 'stream', label: 'Stream' },
+  { row: 5, key: 'subjectId', label: 'Subject ID *' },
+  { row: 6, key: 'year', label: 'Exam year *' },
+  { row: 7, key: 'title', label: 'Paper title *' },
+  { row: 8, key: 'content', label: 'Reviewed paper content *' },
+  { row: 9, key: 'accessTier', label: 'Access *' },
+  { row: 10, key: 'id', label: 'Paper ID (automatic)' },
+  { row: 11, key: 'version', label: 'Next version' },
+  { row: 12, key: 'updatedAt', label: 'Draft saved at' }
+];
+
 function onOpen() {
   var ui = SpreadsheetApp.getUi();
   var csvImportMenu = ui.createMenu('CSV import (recommended)')
     .addItem('Import active CSV sheet as Draft', 'importActiveQuestionSheetAsDraft')
     .addItem('Publish active imported unit', 'publishActiveQuestionSheetUnit')
     .addItem('Repair active unit announcement', 'repairActiveQuestionSheetUnitAnnouncement')
+    .addItem('Repair fraction cells in all subjects', 'repairAllQuestionFractionDates')
     .addSeparator()
     .addItem('Create blank import sheet', 'createBlankQuestionImportSheet');
   ui
@@ -64,6 +109,658 @@ function onOpen() {
     .addItem('Release selected device', 'releaseSelectedUserDevice')
     .addItem('Release every device for selected user', 'releaseAllSelectedUserDevices')
     .addToUi();
+  ui.createMenu('Zemen Notes')
+    .addItem('Import active notes sheet as Draft', 'importActiveNotesSheetAsDraft')
+    .addItem('Publish active imported notes', 'publishActiveNotesSheet')
+    .addItem('Create blank notes import sheet', 'createBlankNotesImportSheet')
+    .addSeparator()
+    .addItem('Open note editor', 'openNoteEditor')
+    .addItem('New blank note', 'newNoteEditorDraft')
+    .addItem('Save current draft', 'saveNoteEditorDraft')
+    .addSeparator()
+    .addItem('Publish current note', 'publishNoteEditorDraft')
+    .addItem('Load selected Notes row', 'loadSelectedNoteIntoEditor')
+    .addToUi();
+  ui.createMenu('Zemen Past Papers')
+    .addItem('Import active entrance-exam sheet as Draft', 'importActivePastPaperSheetAsDraft')
+    .addItem('Publish active imported entrance exam', 'publishActivePastPaperSheet')
+    .addItem('Create blank entrance-exam import sheet', 'createBlankPastPaperImportSheet')
+    .addToUi();
+  ui.createMenu('Zemen Security')
+    .addItem('Run release security diagnostic', 'diagnoseReleaseSecurity')
+    .addItem('Install timetable sync storage', 'installStudyPlanSync')
+    .addItem('Protect sensitive sheets', 'protectSensitiveSecuritySheets')
+    .addItem('Create private production backup', 'createPrivateProductionBackup')
+    .addItem('Verify latest private backup', 'verifyLatestPrivateProductionBackup')
+    .addSeparator()
+    .addItem('Delete selected user account data', 'deleteSelectedUserAccountData')
+    .addItem('Install daily security cleanup', 'installSecurityMaintenance')
+    .addToUi();
+}
+
+function releaseSecuritySnapshot_() {
+  var spreadsheet = SpreadsheetApp.getActiveSpreadsheet() || masterSpreadsheet_();
+  var properties = PropertiesService.getScriptProperties();
+  var maintenanceTriggers = ScriptApp.getProjectTriggers().filter(function (trigger) {
+    return trigger.getHandlerFunction() === 'cleanupExpiredSecurityRecords';
+  });
+  var sheetStatus = SECURITY_SENSITIVE_SHEETS.map(function (name) {
+    var sheet = spreadsheet.getSheetByName(name);
+    if (!sheet) return { name: name, exists: false, protected: false };
+    var protections = sheet.getProtections(SpreadsheetApp.ProtectionType.SHEET);
+    return {
+      name: name,
+      exists: true,
+      protected: protections.some(function (protection) { return !protection.isWarningOnly(); })
+    };
+  });
+  var file = DriveApp.getFileById(spreadsheet.getId());
+  return {
+    backendRelease: typeof ZEMEN_BACKEND_RELEASE === 'undefined' ? '' : ZEMEN_BACKEND_RELEASE,
+    passwordPepperConfigured: String(properties.getProperty('PASSWORD_PEPPER') || '').length >= 32,
+    spreadsheetIdConfigured: Boolean(String(properties.getProperty('SPREADSHEET_ID') || '').trim()),
+    cleanupTriggerCount: maintenanceTriggers.length,
+    cleanupTriggerHealthy: maintenanceTriggers.length === 1,
+    externalEditorCount: file.getEditors().length,
+    externalViewerCount: file.getViewers().length,
+    sharingAccess: String(file.getSharingAccess()),
+    sharingPermission: String(file.getSharingPermission()),
+    sensitiveSheets: sheetStatus,
+    protectedSheetCount: sheetStatus.filter(function (item) { return item.protected; }).length,
+    lastPrivateBackupAt: properties.getProperty('LAST_PRIVATE_BACKUP_AT') || '',
+    lastPrivateBackupVerifiedAt: properties.getProperty('LAST_PRIVATE_BACKUP_VERIFIED_AT') || '',
+    checkedAt: new Date().toISOString()
+  };
+}
+
+function diagnoseReleaseSecurity() {
+  var result = releaseSecuritySnapshot_();
+  console.log(JSON.stringify(result));
+  try {
+    SpreadsheetApp.getUi().alert(
+      'Release security diagnostic',
+      'Cleanup trigger: ' + (result.cleanupTriggerHealthy ? 'ready' : 'needs attention')
+        + '\nSensitive sheets protected: ' + result.protectedSheetCount + '/' + result.sensitiveSheets.length
+        + '\nAdditional file editors: ' + result.externalEditorCount
+        + '\nAdditional file viewers: ' + result.externalViewerCount
+        + '\nLast private backup: ' + (result.lastPrivateBackupAt || 'not recorded')
+        + '\nBackup verified: ' + (result.lastPrivateBackupVerifiedAt || 'not verified'),
+      SpreadsheetApp.getUi().ButtonSet.OK
+    );
+  } catch (error) {
+    // Headless execution still returns the complete diagnostic object.
+  }
+  return result;
+}
+
+function protectSensitiveSecuritySheets() {
+  var ui = SpreadsheetApp.getUi();
+  var answer = ui.alert(
+    'Protect sensitive sheets?',
+    'Only the spreadsheet owner should edit account, session, device, progress, report, and Premium records directly. Content sheets are not changed.',
+    ui.ButtonSet.YES_NO
+  );
+  if (answer !== ui.Button.YES) return { cancelled: true };
+
+  var spreadsheet = SpreadsheetApp.getActiveSpreadsheet() || masterSpreadsheet_();
+  var effectiveEmail = String(Session.getEffectiveUser().getEmail() || '').trim();
+  var protectedNames = [];
+  SECURITY_SENSITIVE_SHEETS.forEach(function (name) {
+    var sheet = spreadsheet.getSheetByName(name);
+    if (!sheet) return;
+    var protections = sheet.getProtections(SpreadsheetApp.ProtectionType.SHEET);
+    var protection = protections[0] || sheet.protect();
+    if (!protection.canEdit()) throw new Error('The current account cannot update protection for ' + name + '.');
+    protection.setDescription('Zemen Academy sensitive data — owner/admin only');
+    protection.setWarningOnly(false);
+    var editors = protection.getEditors();
+    if (editors.length) protection.removeEditors(editors);
+    if (effectiveEmail) protection.addEditor(effectiveEmail);
+    if (protection.canDomainEdit()) protection.setDomainEdit(false);
+    protectedNames.push(name);
+  });
+  SpreadsheetApp.flush();
+  return { protected: true, sheets: protectedNames, count: protectedNames.length };
+}
+
+function installStudyPlanSync() {
+  var spreadsheet = SpreadsheetApp.getActiveSpreadsheet() || masterSpreadsheet_();
+  ensureSheetWithHeaders_(spreadsheet, 'StudyPlans', SHEET_HEADERS.StudyPlans);
+  SpreadsheetApp.flush();
+  console.log('Timetable sync storage is ready. Deploy a new web app version on the existing URL.');
+  return { installed: true, sheet: 'StudyPlans', backendRelease: '2026-08-16-timetable-v2' };
+}
+
+function createPrivateProductionBackup() {
+  var ui = SpreadsheetApp.getUi();
+  var answer = ui.alert(
+    'Create a private production backup?',
+    'This creates an owner-only Google Drive copy containing account and learning data. Keep it private and delete obsolete copies according to your retention policy.',
+    ui.ButtonSet.YES_NO
+  );
+  if (answer !== ui.Button.YES) return { cancelled: true };
+
+  var spreadsheet = SpreadsheetApp.getActiveSpreadsheet() || masterSpreadsheet_();
+  var timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'Etc/UTC', 'yyyy-MM-dd_HHmmss');
+  var source = DriveApp.getFileById(spreadsheet.getId());
+  var copy = source.makeCopy('Zemen Academy PRIVATE BACKUP ' + timestamp);
+  copy.setSharing(DriveApp.Access.PRIVATE, DriveApp.Permission.NONE);
+  var now = new Date().toISOString();
+  PropertiesService.getScriptProperties().setProperties({
+    LAST_PRIVATE_BACKUP_AT: now,
+    LAST_PRIVATE_BACKUP_FILE_ID: copy.getId()
+  }, false);
+  return { created: true, fileId: copy.getId(), createdAt: now, access: 'PRIVATE' };
+}
+
+function verifyLatestPrivateProductionBackup() {
+  var properties = PropertiesService.getScriptProperties();
+  var fileId = String(properties.getProperty('LAST_PRIVATE_BACKUP_FILE_ID') || '').trim();
+  if (!fileId) throw new Error('Create a private production backup first.');
+  var file = DriveApp.getFileById(fileId);
+  if (file.getSharingAccess() !== DriveApp.Access.PRIVATE) {
+    throw new Error('The latest production backup is not private. Fix its Drive sharing before continuing.');
+  }
+  var backup = SpreadsheetApp.openById(fileId);
+  var missing = [];
+  var invalidHeaders = [];
+  Object.keys(SHEET_HEADERS).forEach(function (name) {
+    var sheet = backup.getSheetByName(name);
+    if (!sheet) {
+      missing.push(name);
+      return;
+    }
+    var expected = SHEET_HEADERS[name];
+    var actual = sheet.getRange(1, 1, 1, expected.length).getDisplayValues()[0];
+    if (expected.some(function (header, index) { return String(actual[index]) !== String(header); })) {
+      invalidHeaders.push(name);
+    }
+  });
+  if (missing.length || invalidHeaders.length) {
+    throw new Error('Backup verification failed. Missing sheets: ' + missing.join(', ')
+      + '. Invalid headers: ' + invalidHeaders.join(', ') + '.');
+  }
+  var verifiedAt = new Date().toISOString();
+  properties.setProperty('LAST_PRIVATE_BACKUP_VERIFIED_AT', verifiedAt);
+  return {
+    verified: true,
+    sharing: 'PRIVATE',
+    sheetCount: Object.keys(SHEET_HEADERS).length,
+    createdAt: properties.getProperty('LAST_PRIVATE_BACKUP_AT') || '',
+    verifiedAt: verifiedAt
+  };
+}
+
+function selectedUserAccount_() {
+  var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = spreadsheet && spreadsheet.getActiveSheet();
+  var range = spreadsheet && spreadsheet.getActiveRange();
+  if (!sheet || sheet.getName() !== 'Users' || !range || range.getRow() < 2) {
+    throw new Error('Select one account row in the Users sheet first.');
+  }
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getDisplayValues()[0];
+  var values = sheet.getRange(range.getRow(), 1, 1, headers.length).getValues()[0];
+  var user = { _row: range.getRow() };
+  headers.forEach(function (header, index) { user[String(header)] = values[index]; });
+  if (!user.id || !user.email) throw new Error('The selected row is not a valid user account.');
+  return user;
+}
+
+function deleteSelectedUserAccountData() {
+  var user = selectedUserAccount_();
+  var ui = SpreadsheetApp.getUi();
+  var answer = ui.alert(
+    'Permanently delete this account?',
+    'Account: ' + String(user.email) + '\n\nThis removes the account, sessions, password resets, progress, attempts, timetable, devices, notification tokens, reports, and Premium records. This cannot be undone.',
+    ui.ButtonSet.YES_NO
+  );
+  if (answer !== ui.Button.YES) return { cancelled: true };
+
+  var master = SpreadsheetApp.getActiveSpreadsheet() || masterSpreadsheet_();
+  var userId = String(user.id);
+  var counts = {};
+  var userSheets = [
+    'Sessions', 'PasswordResets', 'Attempts', 'Progress', 'StudyPlans',
+    'QuestionReports', 'DeviceTokens', 'PremiumPushQueue', 'PremiumRequests',
+    'PremiumAudit', 'UserDevices'
+  ];
+
+  withLock_(function () {
+    var cache = CacheService.getScriptCache();
+    userSheets.forEach(function (name) {
+      var target = master.getSheetByName(name);
+      if (!target) {
+        counts[name] = 0;
+        return;
+      }
+      var records = objects_(name).filter(function (record) {
+        return String(record.userId || '') === userId;
+      });
+      if (name === 'Sessions') {
+        records.forEach(function (session) {
+          if (session.tokenHash) cache.remove(sessionCacheKey_(String(session.tokenHash)));
+        });
+      }
+      var rows = records.map(function (record) { return record._row; }).sort(function (left, right) {
+        return right - left;
+      });
+      rows.forEach(function (row) { target.deleteRow(row); });
+      counts[name] = rows.length;
+    });
+    var usersSheet = master.getSheetByName('Users');
+    var storedUser = findObject_('Users', 'id', userId);
+    if (usersSheet && storedUser && storedUser._row) {
+      usersSheet.deleteRow(storedUser._row);
+      counts.Users = 1;
+    } else {
+      counts.Users = 0;
+    }
+  });
+
+  SpreadsheetApp.flush();
+  console.log('Account deletion completed for user ID hash: ' + Utilities.base64EncodeWebSafe(
+    Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, userId)
+  ).slice(0, 16));
+  return { deleted: true, counts: counts, completedAt: new Date().toISOString() };
+}
+
+function installPastPaperWorkspace_() {
+  var spreadsheet = SpreadsheetApp.getActiveSpreadsheet() || masterSpreadsheet_();
+  ensureSheetWithHeaders_(spreadsheet, 'PastPapers', SHEET_HEADERS.PastPapers);
+  var sheet = spreadsheet.getSheetByName(PAST_PAPER_EDITOR_SHEET);
+  if (!sheet) sheet = spreadsheet.insertSheet(PAST_PAPER_EDITOR_SHEET);
+
+  sheet.getRange('A1:B1').breakApart();
+  sheet.getRange('A1:B1').merge();
+  sheet.getRange('A1').setValue('Zemen Academy Past Paper Editor')
+    .setFontSize(18).setFontWeight('bold').setFontColor('#FFFFFF').setBackground('#5A3E18');
+  sheet.getRange('A2:B2').breakApart();
+  sheet.getRange('A2:B2').merge();
+  sheet.getRange('A2').setValue('Paste one reviewed text paper. Drafts stay private; Publish makes the paper available to the matching grade and stream.')
+    .setWrap(true).setFontColor('#5A4528').setBackground('#FFF3DB');
+
+  PAST_PAPER_EDITOR_FIELDS.forEach(function (field) {
+    sheet.getRange(field.row, 1).setValue(field.label).setFontWeight('bold').setBackground('#FBF6EC');
+  });
+  sheet.getRange(3, 2, PAST_PAPER_EDITOR_FIELDS.length, 1).setNumberFormat('@').setWrap(true).setVerticalAlignment('top');
+  sheet.setColumnWidth(1, 190);
+  sheet.setColumnWidth(2, 720);
+  sheet.setRowHeight(2, 52);
+  sheet.setRowHeight(7, 58);
+  sheet.setRowHeight(8, 420);
+  sheet.setFrozenRows(2);
+  sheet.setHiddenGridlines(true);
+
+  sheet.getRange('B3').setDataValidation(
+    SpreadsheetApp.newDataValidation().requireValueInList(['9', '10', '11', '12'], true).setAllowInvalid(false).build()
+  );
+  sheet.getRange('B4').setDataValidation(
+    SpreadsheetApp.newDataValidation().requireValueInList(['Natural', 'Social'], true).setAllowInvalid(false).build()
+  );
+  sheet.getRange('B9').setDataValidation(
+    SpreadsheetApp.newDataValidation().requireValueInList(['free', 'premium'], true).setAllowInvalid(false).build()
+  );
+  var subjectsSheet = spreadsheet.getSheetByName('Subjects');
+  if (subjectsSheet && subjectsSheet.getLastRow() > 1) {
+    var idColumn = SHEET_HEADERS.Subjects.indexOf('id') + 1;
+    sheet.getRange('B5').setDataValidation(
+      SpreadsheetApp.newDataValidation()
+        .requireValueInRange(subjectsSheet.getRange(2, idColumn, subjectsSheet.getLastRow() - 1, 1), true)
+        .setAllowInvalid(false).build()
+    );
+  }
+  if (!String(sheet.getRange('B9').getDisplayValue()).trim()) sheet.getRange('B9').setValue('premium');
+  if (!String(sheet.getRange('B11').getDisplayValue()).trim()) sheet.getRange('B11').setValue('1');
+  return sheet;
+}
+
+function openPastPaperEditor() {
+  var sheet = installPastPaperWorkspace_();
+  sheet.activate();
+  sheet.getRange('B3').activate();
+  return sheet.getName();
+}
+
+function newPastPaperEditorDraft() {
+  var ui = SpreadsheetApp.getUi();
+  var answer = ui.alert('Start a new past paper?', 'The editor will be cleared. Previously published papers are not affected.', ui.ButtonSet.YES_NO);
+  if (answer !== ui.Button.YES) return { cancelled: true };
+  var sheet = installPastPaperWorkspace_();
+  sheet.getRange(3, 2, PAST_PAPER_EDITOR_FIELDS.length, 1).clearContent();
+  sheet.getRange('B9').setValue('premium');
+  sheet.getRange('B11').setValue('1');
+  sheet.activate();
+  sheet.getRange('B3').activate();
+  return { cleared: true };
+}
+
+function pastPaperEditorValues_() {
+  var sheet = installPastPaperWorkspace_();
+  var paper = {};
+  PAST_PAPER_EDITOR_FIELDS.forEach(function (field) {
+    paper[field.key] = String(sheet.getRange(field.row, 2).getDisplayValue() || '').trim();
+  });
+  return paper;
+}
+
+function validatePastPaperEditor_(paper) {
+  var grade = Number(paper.grade);
+  if ([9, 10, 11, 12].indexOf(grade) < 0) throw new Error('Choose Grade 9, 10, 11, or 12.');
+  var subjectId = clean_(paper.subjectId, 120);
+  var subject = subjectId ? findObject_('Subjects', 'id', subjectId) : null;
+  if (!subject || clean_(subject.status, 20).toLowerCase() !== 'active') throw new Error('Choose an active Subject ID from the list.');
+  if (Number(subject.grade) !== grade) throw new Error('The selected subject belongs to a different grade.');
+
+  var stream = clean_(paper.stream, 20);
+  if (grade < 11) stream = '';
+  if (grade >= 11 && ['Natural', 'Social'].indexOf(stream) < 0) throw new Error('Choose Natural or Social for Grade 11 or 12.');
+  if (grade >= 11 && clean_(subject.stream, 20) !== stream) throw new Error('The selected subject belongs to a different stream.');
+
+  var year = Number(String(paper.year || '').replace(/[^0-9]/g, ''));
+  if (!Number.isInteger(year) || year < 1900 || year > 2200) throw new Error('Enter a four-digit exam year, for example 2018.');
+  var title = safeSheetText_(paper.title, 180);
+  var content = safeSheetText_(paper.content, 45000);
+  if (!title) throw new Error('Add a clear paper title.');
+  if (!content) throw new Error('Paste the reviewed paper content.');
+  var tier = clean_(paper.accessTier, 20).toLowerCase();
+  if (['free', 'premium'].indexOf(tier) < 0) throw new Error('Choose free or premium access.');
+
+  return {
+    title: title, grade: String(grade), stream: stream, subjectId: subjectId,
+    year: String(year), content: content, downloadUrl: '', accessTier: tier
+  };
+}
+
+function savePastPaperEditorDraft() {
+  validatePastPaperEditor_(pastPaperEditorValues_());
+  var savedAt = new Date().toISOString();
+  var sheet = installPastPaperWorkspace_();
+  sheet.getRange('B12').setValue(savedAt);
+  SpreadsheetApp.flush();
+  SpreadsheetApp.getUi().alert('Draft saved', 'The paper remains private in PastPaperEditor until you publish it.', SpreadsheetApp.getUi().ButtonSet.OK);
+  return { saved: true, savedAt: savedAt };
+}
+
+function pastPaperEditorId_(paper) {
+  if (paper.id) return validatedIdentifier_(paper.id, 'past paper');
+  var base = ['PAPER', 'G' + paper.grade, paper.stream || 'ALL', paper.year, paper.subjectId].join('-')
+    .toUpperCase().replace(/[^A-Z0-9._:-]+/g, '-').slice(0, 94);
+  return validatedIdentifier_(base + '-' + Utilities.getUuid().split('-')[0].toUpperCase(), 'past paper');
+}
+
+function duplicatePastPaper_(paper) {
+  return objects_('PastPapers').filter(function (item) {
+    return clean_(item.status, 20).toLowerCase() === 'active'
+      && Number(item.grade) === Number(paper.grade)
+      && clean_(item.stream, 20) === clean_(paper.stream, 20)
+      && clean_(item.subjectId, 120) === clean_(paper.subjectId, 120)
+      && Number(item.year) === Number(paper.year)
+      && clean_(item.title, 180).toLowerCase() === clean_(paper.title, 180).toLowerCase();
+  })[0];
+}
+
+function invalidatePastPaperCaches_(paper, previous) {
+  var cache = CacheService.getScriptCache();
+  [paper, previous].filter(function (item) { return Boolean(item); }).forEach(function (item) {
+    cache.remove('paper:v2:' + String(item.id) + ':v' + String(Math.max(1, Number(item.version) || 1)));
+    cache.remove('paper:v3:' + String(item.id) + ':v' + String(Math.max(1, Number(item.version) || 1)));
+  });
+  invalidateCatalogCaches_();
+}
+
+function publishPastPaperEditorDraft() {
+  var raw = pastPaperEditorValues_();
+  var paper = validatePastPaperEditor_(raw);
+  paper.id = pastPaperEditorId_(raw);
+  var existing = findObject_('PastPapers', 'id', paper.id);
+  if (!existing) {
+    var duplicate = duplicatePastPaper_(paper);
+    if (duplicate) throw new Error('This paper already exists. Select its PastPapers row and load it into the editor to update it.');
+  }
+  paper.version = existing ? Math.max(1, Number(existing.version) || 1) + 1 : Math.max(1, Number(raw.version) || 1);
+  paper.status = 'active';
+  paper.updatedAt = new Date().toISOString();
+
+  var ui = SpreadsheetApp.getUi();
+  var answer = ui.alert(
+    existing ? 'Publish updated past paper?' : 'Publish this past paper?',
+    paper.title + '\n\nGrade ' + paper.grade + (paper.stream ? ' · ' + paper.stream : '')
+      + ' · ' + paper.year + ' · ' + paper.accessTier + ' access',
+    ui.ButtonSet.YES_NO
+  );
+  if (answer !== ui.Button.YES) return { cancelled: true };
+
+  withLock_(function () {
+    if (existing) updateObjectAtRow_('PastPapers', existing._row, paper);
+    else appendObject_('PastPapers', paper);
+  });
+  invalidatePastPaperCaches_(paper, existing);
+
+  var sheet = installPastPaperWorkspace_();
+  sheet.getRange('B10').setValue(paper.id);
+  sheet.getRange('B11').setValue(String(paper.version + 1));
+  sheet.getRange('B12').setValue(paper.updatedAt);
+  SpreadsheetApp.flush();
+  ui.alert('Past paper published', paper.title + ' is now available to the matching students.', ui.ButtonSet.OK);
+  return { published: true, id: paper.id, version: paper.version };
+}
+
+function loadSelectedPastPaperIntoEditor() {
+  var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = spreadsheet && spreadsheet.getActiveSheet();
+  var range = spreadsheet && spreadsheet.getActiveRange();
+  if (!sheet || sheet.getName() !== 'PastPapers' || !range || range.getRow() < 2) {
+    throw new Error('Select one published row in the PastPapers sheet first.');
+  }
+  var headers = sheet.getRange(1, 1, 1, SHEET_HEADERS.PastPapers.length).getValues()[0];
+  var values = sheet.getRange(range.getRow(), 1, 1, headers.length).getDisplayValues()[0];
+  var paper = {};
+  headers.forEach(function (header, index) { paper[String(header)] = values[index]; });
+  if (!paper.id) throw new Error('The selected PastPapers row is empty.');
+
+  var editor = installPastPaperWorkspace_();
+  PAST_PAPER_EDITOR_FIELDS.forEach(function (field) {
+    var value = field.key === 'version' ? String((Number(paper.version) || 1) + 1) : (paper[field.key] || '');
+    editor.getRange(field.row, 2).setValue(value);
+  });
+  editor.getRange('B12').setValue(new Date().toISOString());
+  editor.activate();
+  editor.getRange('B7').activate();
+  return { loaded: true, id: String(paper.id) };
+}
+
+function installNotesWorkspace_() {
+  var spreadsheet = SpreadsheetApp.getActiveSpreadsheet() || masterSpreadsheet_();
+  ensureSheetWithHeaders_(spreadsheet, 'Notes', SHEET_HEADERS.Notes);
+  var sheet = spreadsheet.getSheetByName(NOTE_EDITOR_SHEET);
+  if (!sheet) sheet = spreadsheet.insertSheet(NOTE_EDITOR_SHEET);
+
+  sheet.getRange('A1:B1').breakApart();
+  sheet.getRange('A1:B1').merge();
+  sheet.getRange('A1').setValue('Zemen Academy Note Editor')
+    .setFontSize(18).setFontWeight('bold').setFontColor('#FFFFFF').setBackground('#1F4E5F');
+  sheet.getRange('A2:B2').breakApart();
+  sheet.getRange('A2:B2').merge();
+  sheet.getRange('A2').setValue('Write one reviewed note here. Google Sheets saves this draft automatically; students see it only after Publish.')
+    .setWrap(true).setFontColor('#415A66').setBackground('#E9F4F7');
+
+  NOTE_EDITOR_FIELDS.forEach(function (field) {
+    sheet.getRange(field.row, 1).setValue(field.label).setFontWeight('bold').setBackground('#F3F6F8');
+  });
+  sheet.getRange(3, 2, NOTE_EDITOR_FIELDS.length, 1).setNumberFormat('@').setWrap(true).setVerticalAlignment('top');
+  sheet.setColumnWidth(1, 180);
+  sheet.setColumnWidth(2, 720);
+  sheet.setRowHeight(2, 48);
+  sheet.setRowHeight(9, 72);
+  sheet.setRowHeight(10, 72);
+  sheet.setRowHeight(11, 240);
+  sheet.setRowHeight(12, 240);
+  sheet.setFrozenRows(2);
+  sheet.setHiddenGridlines(true);
+
+  var gradeRule = SpreadsheetApp.newDataValidation().requireValueInList(['9', '10', '11', '12'], true).setAllowInvalid(false).build();
+  var streamRule = SpreadsheetApp.newDataValidation().requireValueInList(['Natural', 'Social'], true).setAllowInvalid(false).build();
+  var tierRule = SpreadsheetApp.newDataValidation().requireValueInList(['free', 'premium'], true).setAllowInvalid(false).build();
+  sheet.getRange('B3').setDataValidation(gradeRule);
+  sheet.getRange('B4').setDataValidation(streamRule);
+  sheet.getRange('B13').setDataValidation(tierRule);
+
+  var subjectsSheet = spreadsheet.getSheetByName('Subjects');
+  if (subjectsSheet && subjectsSheet.getLastRow() > 1) {
+    var subjectIdColumn = SHEET_HEADERS.Subjects.indexOf('id') + 1;
+    var subjectRule = SpreadsheetApp.newDataValidation()
+      .requireValueInRange(subjectsSheet.getRange(2, subjectIdColumn, subjectsSheet.getLastRow() - 1, 1), true)
+      .setAllowInvalid(false).build();
+    sheet.getRange('B5').setDataValidation(subjectRule);
+  }
+  if (!String(sheet.getRange('B13').getDisplayValue()).trim()) sheet.getRange('B13').setValue('premium');
+  if (!String(sheet.getRange('B15').getDisplayValue()).trim()) sheet.getRange('B15').setValue('1');
+  return sheet;
+}
+
+function openNoteEditor() {
+  var sheet = installNotesWorkspace_();
+  sheet.activate();
+  sheet.getRange('B3').activate();
+  return sheet.getName();
+}
+
+function newNoteEditorDraft() {
+  var ui = SpreadsheetApp.getUi();
+  var answer = ui.alert('Start a new note?', 'The current editor fields will be cleared. A previously published note is not affected.', ui.ButtonSet.YES_NO);
+  if (answer !== ui.Button.YES) return { cancelled: true };
+  var sheet = installNotesWorkspace_();
+  sheet.getRange(3, 2, NOTE_EDITOR_FIELDS.length, 1).clearContent();
+  sheet.getRange('B13').setValue('premium');
+  sheet.getRange('B15').setValue('1');
+  sheet.activate();
+  sheet.getRange('B3').activate();
+  return { cleared: true };
+}
+
+function noteEditorValues_() {
+  var sheet = installNotesWorkspace_();
+  var note = {};
+  NOTE_EDITOR_FIELDS.forEach(function (field) {
+    note[field.key] = String(sheet.getRange(field.row, 2).getDisplayValue() || '').trim();
+  });
+  return note;
+}
+
+function validateNoteEditor_(note) {
+  var grade = Number(note.grade);
+  if ([9, 10, 11, 12].indexOf(grade) < 0) throw new Error('Choose Grade 9, 10, 11, or 12.');
+  var subjectId = clean_(note.subjectId, 120);
+  var subject = subjectId ? findObject_('Subjects', 'id', subjectId) : null;
+  if (!subject || clean_(subject.status, 20).toLowerCase() !== 'active') throw new Error('Choose an active Subject ID from the list.');
+  if (Number(subject.grade) !== grade) throw new Error('The selected subject belongs to a different grade.');
+
+  var stream = clean_(note.stream, 20);
+  if (grade < 11) stream = '';
+  if (grade >= 11 && ['Natural', 'Social'].indexOf(stream) < 0) throw new Error('Choose Natural or Social for Grade 11 or 12.');
+  if (grade >= 11 && clean_(subject.stream, 20) !== stream) throw new Error('The selected subject belongs to a different stream.');
+
+  var unitId = clean_(note.unitId, 120);
+  if (unitId) resolveUnitContent_(unitId, subjectId);
+  var title = safeSheetText_(note.title, 180);
+  var summary = safeSheetText_(note.summary, 500);
+  var body = safeSheetText_(note.body, 45000);
+  if (!title) throw new Error('Add an English title.');
+  if (!summary) throw new Error('Add a short English summary.');
+  if (!body) throw new Error('Add the reviewed English note.');
+  var tier = clean_(note.accessTier, 20).toLowerCase();
+  if (['free', 'premium'].indexOf(tier) < 0) throw new Error('Choose free or premium access.');
+
+  return {
+    grade: String(grade), stream: stream, subjectId: subjectId, unitId: unitId,
+    title: title, titleAm: safeSheetText_(note.titleAm, 180),
+    summary: summary, summaryAm: safeSheetText_(note.summaryAm, 500),
+    body: body, bodyAm: safeSheetText_(note.bodyAm, 45000), accessTier: tier
+  };
+}
+
+function saveNoteEditorDraft() {
+  var note = noteEditorValues_();
+  validateNoteEditor_(note);
+  var savedAt = new Date().toISOString();
+  var sheet = installNotesWorkspace_();
+  sheet.getRange('B16').setValue(savedAt);
+  SpreadsheetApp.flush();
+  SpreadsheetApp.getUi().alert('Draft saved', 'The editor is saved in this spreadsheet and is not visible to students.', SpreadsheetApp.getUi().ButtonSet.OK);
+  return { saved: true, savedAt: savedAt };
+}
+
+function noteEditorId_(note) {
+  if (note.id) return validatedIdentifier_(note.id, 'note');
+  var base = ['NOTE', 'G' + note.grade, note.subjectId, note.unitId || 'GENERAL'].join('-')
+    .toUpperCase().replace(/[^A-Z0-9._:-]+/g, '-').slice(0, 94);
+  return validatedIdentifier_(base + '-' + Utilities.getUuid().split('-')[0].toUpperCase(), 'note');
+}
+
+function invalidateNoteCaches_(note, previous) {
+  var cache = CacheService.getScriptCache();
+  [note, previous].filter(function (item) { return Boolean(item); }).forEach(function (item) {
+    ['', 'Natural', 'Social', clean_(item.stream, 20)].forEach(function (stream) {
+      cache.remove('notes:v1:' + String(Number(item.grade)) + ':' + String(stream || ''));
+    });
+    cache.remove('note:v1:' + String(item.id) + ':' + String(Number(item.version) || 1));
+  });
+}
+
+function publishNoteEditorDraft() {
+  var raw = noteEditorValues_();
+  var note = validateNoteEditor_(raw);
+  note.id = noteEditorId_(raw);
+  var existing = findObject_('Notes', 'id', note.id);
+  note.version = existing ? Math.max(1, Number(existing.version) || 1) + 1 : Math.max(1, Number(raw.version) || 1);
+  note.status = 'active';
+  note.updatedAt = new Date().toISOString();
+
+  var ui = SpreadsheetApp.getUi();
+  var answer = ui.alert(
+    existing ? 'Publish updated note?' : 'Publish this note?',
+    note.title + '\n\nGrade ' + note.grade + ' · ' + note.accessTier + ' access\nStudents will see it after their Notes page refreshes.',
+    ui.ButtonSet.YES_NO
+  );
+  if (answer !== ui.Button.YES) return { cancelled: true };
+
+  withLock_(function () {
+    if (existing) updateObjectAtRow_('Notes', existing._row, note);
+    else appendObject_('Notes', note);
+  });
+  invalidateNoteCaches_(note, existing);
+
+  var sheet = installNotesWorkspace_();
+  sheet.getRange('B14').setValue(note.id);
+  sheet.getRange('B15').setValue(String(note.version + 1));
+  sheet.getRange('B16').setValue(note.updatedAt);
+  SpreadsheetApp.flush();
+  ui.alert('Note published', note.title + ' is now available in the app.', ui.ButtonSet.OK);
+  return { published: true, id: note.id, version: note.version };
+}
+
+function loadSelectedNoteIntoEditor() {
+  var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = spreadsheet && spreadsheet.getActiveSheet();
+  var range = spreadsheet && spreadsheet.getActiveRange();
+  if (!sheet || sheet.getName() !== 'Notes' || !range || range.getRow() < 2) {
+    throw new Error('Select one published row in the Notes sheet first.');
+  }
+  var headers = sheet.getRange(1, 1, 1, SHEET_HEADERS.Notes.length).getValues()[0];
+  var values = sheet.getRange(range.getRow(), 1, 1, headers.length).getDisplayValues()[0];
+  var note = {};
+  headers.forEach(function (header, index) { note[String(header)] = values[index]; });
+  if (!note.id) throw new Error('The selected Notes row is empty.');
+
+  var editor = installNotesWorkspace_();
+  NOTE_EDITOR_FIELDS.forEach(function (field) {
+    var value = field.key === 'version' ? String((Number(note.version) || 1) + 1) : (note[field.key] || '');
+    editor.getRange(field.row, 2).setValue(value);
+  });
+  editor.getRange('B16').setValue(new Date().toISOString());
+  editor.activate();
+  editor.getRange('B7').activate();
+  return { loaded: true, id: String(note.id) };
 }
 
 function selectedUserDevice_() {
@@ -184,7 +881,9 @@ function approveSelectedPremiumRequest() {
       + 'Bank: ' + selected.bank + '\n'
       + 'Sender: ' + selected.senderName + '\n'
       + (selected.phone ? 'Phone: ' + selected.phone + '\n' : '')
-      + 'Payment date: ' + selected.paymentDate + '\n\n'
+      + 'Payment date: ' + selected.paymentDate + '\n'
+      + 'Submitted at: ' + String(selected.createdAt || 'Not recorded') + '\n\n'
+      + 'Match the bank, exact amount, account-holder name, and date in your bank statement.\n'
       + 'Activate or extend premium now?',
     ui.ButtonSet.YES_NO
   );
@@ -255,7 +954,222 @@ function setupZemenAcademy() {
   seedVersion_();
   seedPremiumPlans_();
   seedPremiumPaymentMethods_();
+  installNotesWorkspace_();
   return 'Zemen Academy sheets and server properties are ready.';
+}
+
+function repairAccountRegistration() {
+  console.log('Account registration repair: starting.');
+  var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  if (!spreadsheet) throw new Error('Open the Zemen Academy master spreadsheet before running repairAccountRegistration.');
+
+  console.log('Account registration repair: checking Users.');
+  ensureSheetWithHeaders_(spreadsheet, 'Users', SHEET_HEADERS.Users);
+  console.log('Account registration repair: checking Sessions.');
+  ensureSheetWithHeaders_(spreadsheet, 'Sessions', SHEET_HEADERS.Sessions);
+  console.log('Account registration repair: checking UserDevices.');
+  ensureSheetWithHeaders_(spreadsheet, 'UserDevices', SHEET_HEADERS.UserDevices);
+
+  console.log('Account registration repair: checking server properties.');
+  var properties = PropertiesService.getScriptProperties();
+  properties.setProperty('SPREADSHEET_ID', spreadsheet.getId());
+  if (!properties.getProperty('PASSWORD_PEPPER')) {
+    var usersSheet = spreadsheet.getSheetByName('Users');
+    if (usersSheet && usersSheet.getLastRow() > 1) {
+      throw new Error(
+        'Existing users were found, but PASSWORD_PEPPER is missing. Restore PASSWORD_PEPPER from the original Apps Script project; do not create a new one.'
+      );
+    }
+    properties.setProperty('PASSWORD_PEPPER', Utilities.getUuid() + Utilities.getUuid() + Utilities.getUuid());
+  }
+
+  SpreadsheetApp.flush();
+  console.log('Account registration repair: complete. Deploy a new web app version before testing sign-up.');
+  return 'Account registration is ready. Deploy a new web app version before testing sign-up.';
+}
+
+function diagnoseAccountRegistration() {
+  console.log('Account registration diagnosis: starting end-to-end test.');
+  assertSignupServiceReady_();
+  var suffix = Utilities.getUuid().toLowerCase();
+  var email = 'signup-diagnostic-' + suffix.slice(0, 12) + '@example.invalid';
+  var payload = {
+    name: 'Registration Diagnostic',
+    email: email,
+    password: 'diagnostic-password-not-a-user',
+    phone: '',
+    installationId: Utilities.getUuid().toLowerCase(),
+    deviceType: 'phone',
+    platform: 'android',
+    deviceName: 'Registration diagnostic'
+  };
+  var result = null;
+  try {
+    result = signup_(payload);
+    console.log('Account registration diagnosis: SUCCESS. User storage, device registration, and session creation all passed.');
+    return 'SUCCESS: the complete account-registration pipeline is working.';
+  } catch (error) {
+    console.error('Account registration diagnosis: FAILED: ' + String(error && error.stack || error));
+    throw error;
+  } finally {
+    try {
+      var diagnosticUser = findObject_('Users', 'email', email);
+      if (diagnosticUser && diagnosticUser.id) rollbackIncompleteSignup_(diagnosticUser.id);
+      if (result && result.token) CacheService.getScriptCache().remove(sessionCacheKey_(tokenHash_(result.token)));
+      console.log('Account registration diagnosis: temporary test records cleaned up.');
+    } catch (cleanupError) {
+      console.error('Account registration diagnosis cleanup failed: ' + String(cleanupError && cleanupError.message || cleanupError));
+    }
+  }
+}
+
+function diagnoseV1AccountAndDeviceGate() {
+  console.log('Gate 2 diagnosis: starting account, device, session, and progress checks.');
+  assertSignupServiceReady_();
+  var suffix = Utilities.getUuid().toLowerCase();
+  var email = 'gate2-' + suffix.slice(0, 12) + '@example.invalid';
+  var password = 'gate2-diagnostic-password';
+  var userId = '';
+  var tokens = [];
+  var phoneOne = {
+    installationId: Utilities.getUuid().toLowerCase(),
+    deviceType: 'phone', platform: 'android', deviceName: 'Gate 2 phone one'
+  };
+  var phoneTwo = {
+    installationId: Utilities.getUuid().toLowerCase(),
+    deviceType: 'phone', platform: 'android', deviceName: 'Gate 2 phone two'
+  };
+  var tablet = {
+    installationId: Utilities.getUuid().toLowerCase(),
+    deviceType: 'tablet', platform: 'android', deviceName: 'Gate 2 tablet'
+  };
+
+  function requireGate_(condition, message) {
+    if (!condition) throw new Error('GATE-2 FAILED: ' + message);
+  }
+
+  try {
+    var signup = signup_({
+      name: 'Gate Two Diagnostic', email: email, password: password, phone: '',
+      installationId: phoneOne.installationId, deviceType: phoneOne.deviceType,
+      platform: phoneOne.platform, deviceName: phoneOne.deviceName
+    });
+    tokens.push(signup.token);
+    userId = String(signup.user && signup.user.id || '');
+    requireGate_(userId && signup.devicePolicy && signup.devicePolicy.accessAllowed,
+      'new account or first phone authorization did not complete.');
+
+    var tabletLogin = login_({
+      email: email, password: password,
+      installationId: tablet.installationId, deviceType: tablet.deviceType,
+      platform: tablet.platform, deviceName: tablet.deviceName
+    });
+    tokens.push(tabletLogin.token);
+    requireGate_(tabletLogin.devicePolicy.accessAllowed
+      && Number(tabletLogin.devicePolicy.phoneCount) === 1
+      && Number(tabletLogin.devicePolicy.tabletCount) === 1,
+      'one-phone/one-tablet authorization failed.');
+
+    var blockedLogin = login_({
+      email: email, password: password,
+      installationId: phoneTwo.installationId, deviceType: phoneTwo.deviceType,
+      platform: phoneTwo.platform, deviceName: phoneTwo.deviceName
+    });
+    tokens.push(blockedLogin.token);
+    requireGate_(!blockedLogin.devicePolicy.accessAllowed
+      && blockedLogin.devicePolicy.blockedReason === 'device-limit',
+      'the second phone was not blocked by the device policy.');
+
+    var oldPhone = objects_('UserDevices').filter(function (device) {
+      return String(device.userId) === userId
+        && clean_(device.installationId, 80).toLowerCase() === phoneOne.installationId;
+    })[0];
+    requireGate_(oldPhone && oldPhone._row, 'the first phone record was not stored.');
+    var releasedAt = new Date().toISOString();
+    updateObjectAtRow_('UserDevices', oldPhone._row, {
+      status: 'revoked', revokedAt: releasedAt, updatedAt: releasedAt,
+      policyFlag: 'released-by-gate-2-diagnostic'
+    });
+    revokeSessionsForDevice_(userId, phoneOne.installationId);
+
+    var reclaimed = registerDeviceObservation_({
+      token: blockedLogin.token,
+      installationId: phoneTwo.installationId, deviceType: phoneTwo.deviceType,
+      platform: phoneTwo.platform, deviceName: phoneTwo.deviceName
+    });
+    requireGate_(reclaimed.policy.accessAllowed
+      && Number(reclaimed.policy.phoneCount) === 1
+      && Number(reclaimed.policy.tabletCount) === 1,
+      'the released phone slot was not reclaimed automatically.');
+
+    appendObject_('Attempts', {
+      id: 'attempt-gate2-' + suffix, userId: userId, unitId: 'gate-2-unit',
+      mode: 'exam', answersJson: '[0]', correct: 1, wrong: 0, skipped: 0,
+      durationSeconds: 60, endReason: 'submitted',
+      completedAt: new Date().toISOString(), createdAt: new Date().toISOString(),
+      contentType: 'unit'
+    });
+    updateProgressSummary_(userId);
+    var progress = findObject_('Progress', 'userId', userId);
+    requireGate_(progress && Number(progress.completedAttempts) === 1
+      && Number(progress.totalSeconds) === 60,
+      'server-side progress was not persisted.');
+
+    logout_({ token: blockedLogin.token });
+    requireGate_(!optionalSession_(blockedLogin.token), 'logout did not revoke the session.');
+
+    var relogin = login_({
+      email: email, password: password,
+      installationId: phoneTwo.installationId, deviceType: phoneTwo.deviceType,
+      platform: phoneTwo.platform, deviceName: phoneTwo.deviceName
+    });
+    tokens.push(relogin.token);
+    requireGate_(relogin.devicePolicy.accessAllowed, 'the released slot could not sign in again.');
+
+    console.log('Gate 2 diagnosis: SUCCESS.');
+    return {
+      status: 'SUCCESS',
+      backendRelease: typeof ZEMEN_BACKEND_RELEASE === 'string' ? ZEMEN_BACKEND_RELEASE : 'unknown',
+      checks: [
+        'signup', 'login', 'one-phone-one-tablet', 'second-phone-blocked',
+        'admin-release-reclaim', 'progress-persisted', 'logout-revoked', 'relogin'
+      ]
+    };
+  } catch (error) {
+    console.error('Gate 2 diagnosis: FAILED: ' + String(error && error.stack || error));
+    throw error;
+  } finally {
+    try {
+      tokens.forEach(function (token) {
+        if (token) CacheService.getScriptCache().remove(sessionCacheKey_(tokenHash_(token)));
+      });
+      if (!userId) {
+        var temporary = findObject_('Users', 'email', email);
+        userId = temporary && temporary.id ? String(temporary.id) : '';
+      }
+      if (userId) {
+        withLock_(function () {
+          removeSignupRowsForUser_(userId, ['Sessions', 'UserDevices', 'Attempts', 'Progress']);
+          var createdUser = findObject_('Users', 'id', userId);
+          var usersSheet = masterSpreadsheet_().getSheetByName('Users');
+          if (usersSheet && createdUser && createdUser._row) usersSheet.deleteRow(createdUser._row);
+        });
+      }
+      console.log('Gate 2 diagnosis: temporary records cleaned up.');
+    } catch (cleanupError) {
+      console.error('Gate 2 diagnosis cleanup failed: '
+        + String(cleanupError && cleanupError.message || cleanupError));
+    }
+  }
+}
+
+function installProgressAndAnnouncementUpgrade() {
+  var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  if (!spreadsheet) throw new Error('Open the Zemen Academy master spreadsheet first.');
+  ensureSheetWithHeaders_(spreadsheet, 'Progress', SHEET_HEADERS.Progress);
+  ensureSheetWithHeaders_(spreadsheet, 'Announcements', SHEET_HEADERS.Announcements);
+  SpreadsheetApp.flush();
+  return 'Progress summaries and announcement actions are ready.';
 }
 
 function diagnoseAuthenticationSetup() {
@@ -394,10 +1308,50 @@ function ensureSheetWithHeaders_(spreadsheet, name, headers) {
     .setFontWeight('bold')
     .setBackground('#111113')
     .setFontColor('#FFFFFF');
+  if (name === 'Questions' || name === 'PastPaperQuestions') {
+    formatQuestionTextColumns_(sheet, headers, 2, Math.max(1, sheet.getMaxRows() - 1));
+  }
+  if (name === 'Notes' || name === 'NoteDrafts') {
+    formatNoteTextColumns_(sheet, headers, 2, Math.max(1, sheet.getMaxRows() - 1));
+  }
+  if (name === 'PastPapers') {
+    formatPastPaperTextColumns_(sheet, headers, 2, Math.max(1, sheet.getMaxRows() - 1));
+  }
   // Auto-resizing scans cell contents and can exceed Apps Script's execution limit on
   // large question banks. It is cosmetic, so only use it for small administrative tabs.
   if (changed && sheet.getLastRow() <= 1000) sheet.autoResizeColumns(1, headers.length);
   return sheet;
+}
+
+function formatQuestionTextColumns_(sheet, headers, startRow, rowCount) {
+  if (!sheet || rowCount < 1) return;
+  var textHeaders = [
+    'question', 'optionA', 'optionB', 'optionC', 'optionD',
+    'explanation', 'externalId', 'topic', 'sourceReference'
+  ];
+  textHeaders.forEach(function (header) {
+    var column = headers.indexOf(header);
+    if (column >= 0) sheet.getRange(startRow, column + 1, rowCount, 1).setNumberFormat('@');
+  });
+}
+
+function formatNoteTextColumns_(sheet, headers, startRow, rowCount) {
+  if (!sheet || rowCount < 1) return;
+  [
+    'id', 'stream', 'subjectId', 'unitId', 'title', 'titleAm', 'summary',
+    'summaryAm', 'body', 'bodyAm', 'status', 'updatedAt', 'accessTier'
+  ].forEach(function (header) {
+    var column = headers.indexOf(header);
+    if (column >= 0) sheet.getRange(startRow, column + 1, rowCount, 1).setNumberFormat('@');
+  });
+}
+
+function formatPastPaperTextColumns_(sheet, headers, startRow, rowCount) {
+  if (!sheet || rowCount < 1) return;
+  ['id', 'title', 'stream', 'subjectId', 'subjectName', 'subjectIcon', 'content', 'downloadUrl', 'status', 'updatedAt', 'accessTier'].forEach(function (header) {
+    var column = headers.indexOf(header);
+    if (column >= 0) sheet.getRange(startRow, column + 1, rowCount, 1).setNumberFormat('@');
+  });
 }
 
 function normalizedHeader_(value) {
@@ -534,7 +1488,9 @@ function writeObjectsToContentSheet_(spreadsheet, sheetName, objects) {
       return object[header] === undefined ? '' : object[header];
     });
   });
-  spreadsheet.getSheetByName(sheetName).getRange(2, 1, rows.length, headers.length).setValues(rows);
+  var sheet = spreadsheet.getSheetByName(sheetName);
+  if (sheetName === 'Questions') formatQuestionTextColumns_(sheet, headers, 2, rows.length);
+  sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
 }
 
 function rebuildQuestionIndexForSpreadsheet_(spreadsheet) {

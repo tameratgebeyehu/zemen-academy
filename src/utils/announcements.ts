@@ -34,8 +34,19 @@ export function announcementsEqual(left: Announcement[], right: Announcement[]):
       && candidate.body === item.body
       && candidate.publishedAt === item.publishedAt
       && candidate.kind === item.kind
-      && candidate.ownerUserId === item.ownerUserId;
+      && candidate.ownerUserId === item.ownerUserId
+      && candidate.actionType === item.actionType
+      && candidate.targetId === item.targetId
+      && candidate.actionLabel === item.actionLabel;
   });
+}
+
+export function announcementQuizUnitId(announcement: Announcement): string | null {
+  if (announcement.actionType === 'quiz' && announcement.targetId?.trim()) {
+    return announcement.targetId.trim();
+  }
+  const legacyMatch = announcement.id.match(/^unit-published-(.+)-v\d+$/);
+  return legacyMatch?.[1]?.trim() || null;
 }
 
 export function createWelcomeAnnouncement(
@@ -51,6 +62,8 @@ export function createWelcomeAnnouncement(
     publishedAt,
     kind: 'welcome',
     ownerUserId: user.id,
+    actionType: 'quizzes',
+    actionLabel: 'Explore quizzes',
   };
 }
 

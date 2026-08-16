@@ -3,6 +3,7 @@ import { expect, test } from '@jest/globals';
 import {
   ANNOUNCEMENT_REFRESH_INTERVAL_MS,
   announcementRefreshDelay,
+  announcementQuizUnitId,
   announcementsEqual,
   createWelcomeAnnouncement,
   findNewAnnouncements,
@@ -52,10 +53,24 @@ test('creates and scopes a personal welcome announcement', () => {
     kind: 'welcome',
     ownerUserId: 'student-1',
     title: 'Welcome to Zemen Academy, Abel!',
+    actionType: 'quizzes',
   });
   expect(welcome.body).toContain('Grade 10');
   expect(personalAnnouncementsFor([welcome, newer], 'student-1')).toEqual([welcome]);
   expect(personalAnnouncementsFor([welcome], 'student-2')).toEqual([]);
+});
+
+test('resolves a quiz destination from new metadata and legacy publication IDs', () => {
+  expect(announcementQuizUnitId({
+    ...newer,
+    actionType: 'quiz',
+    targetId: 'g10-math-u1',
+  })).toBe('g10-math-u1');
+  expect(announcementQuizUnitId({
+    ...newer,
+    id: 'unit-published-grade-10-math-unit-2-v3',
+  })).toBe('grade-10-math-unit-2');
+  expect(announcementQuizUnitId(newer)).toBeNull();
 });
 
 test('retries announcement refresh quickly and returns to the normal interval', () => {

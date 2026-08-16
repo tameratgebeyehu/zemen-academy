@@ -6,6 +6,7 @@ import { ActivityIndicator, Button, Card, Icon, Text, useTheme } from 'react-nat
 import { PressableScale } from '@/components/Motion';
 import { NetworkActivity } from '@/components/NetworkActivity';
 import { Screen, SectionTitle } from '@/components/Screen';
+import { PREMIUM_ACCESS_BUTTON_LABEL } from '@/config';
 import { useApp } from '@/context/AppContext';
 import { userFacingError } from '@/utils/userFacingError';
 import { heroPalette, ui } from '@/data/theme';
@@ -39,7 +40,7 @@ export function QuizDetailsScreen({ route, navigation }: Props) {
         </View>
         <Text variant="headlineSmall" style={[styles.bold, styles.center]}>Unlock this unit with Premium</Text>
         <Text variant="bodyLarge" style={[styles.muted, styles.center]}>Unit 1 in every subject stays free. Premium unlocks later units, exam practice, and offline downloads.</Text>
-        <Button mode="contained" icon="crown-outline" contentStyle={styles.upgradeButton} onPress={() => navigation.navigate('Premium')}>View Premium plans</Button>
+        <Button mode="contained" icon="crown-outline" contentStyle={styles.upgradeButton} onPress={() => navigation.navigate('Premium')}>{PREMIUM_ACCESS_BUTTON_LABEL}</Button>
         <Button mode="text" onPress={() => navigation.goBack()}>Back to units</Button>
       </Screen>
     );

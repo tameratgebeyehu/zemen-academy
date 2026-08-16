@@ -5,10 +5,79 @@ import {
   estimateMathHeight,
   mathDocumentId,
   normalizeMathSource,
+  normalizeSpreadsheetFractionText,
   renderMathDocument,
   splitMathSegments,
   toReadableMathText,
 } from '@/utils/math';
+
+test('recovers fractions that Google Sheets converted into date strings', () => {
+  expect(normalizeSpreadsheetFractionText('Tue Nov 03 2026 00:00:00 GMT+0300 (East Africa Time)')).toBe('3/11');
+  expect(normalizeSpreadsheetFractionText('Wed Nov 04 2026 00:00:00 GMT+0300 (East Africa Time)')).toBe('4/11');
+  expect(normalizeSpreadsheetFractionText('4/13')).toBe('4/13');
+  expect(normalizeMathSource('$\\frac{4}{11}$')).toBe('$\\frac{4}{11}$');
+});
+
+test('renders fractions, radicals, and powers through offline KaTeX HTML', () => {
+  const html = renderMathDocument(
+    'Evaluate $\\frac{3}{11}$, $\\sqrt{5}$, and $x^{2}$.',
+    { color: '#111111', fontSize: 16, lineHeight: 24 },
+  );
+  expect(html).toContain('class="mfrac"');
+  expect(html).toContain('sqrt');
+  expect(html).toContain('class="msupsub"');
+  expect(html).toContain('data:font/woff2;base64');
+  expect(html).toContain('font-display:swap');
+  expect(html).toContain('document.fonts.ready');
+});
+
+test('keeps every coordinate visible inside ordered-pair brackets', () => {
+  const html = renderMathDocument(
+    'The points $(-1,2)$ and $(4,11)$ are ordered pairs.',
+    { color: '#111111', fontSize: 17, lineHeight: 25 },
+  );
+  expect(html).toContain('>1</span>');
+  expect(html).toContain('>2</span>');
+  expect(html).toContain('>4</span>');
+  expect(html).toContain('>11</span>');
+  expect(html).not.toContain('<span class="math-fallback">');
+});
+
+test('upgrades legacy Unicode radicals from spreadsheet questions into structured math', () => {
+  const prompt = 'For positive integer n, √(18n) is an integer multiple of √2. Which n gives coefficient 9?';
+  expect(normalizeMathSource(prompt)).toBe(
+    'For positive integer n, $\\sqrt{18n}$ is an integer multiple of $\\sqrt{2}$. Which n gives coefficient 9?',
+  );
+  expect(containsMath(prompt)).toBe(true);
+
+  const html = renderMathDocument(prompt, { color: '#111111', fontSize: 17, lineHeight: 26 });
+  expect(html.match(/class="mord sqrt"/g)).toHaveLength(2);
+  expect(html).toContain('class="hide-tail"');
+  expect(html).not.toContain('<span class="math-fallback">');
+});
+
+test('upgrades indexed roots and powers inside legacy Unicode radicals', () => {
+  expect(normalizeMathSource('Simplify ⁴√(b⁶) and ∛8.')).toBe(
+    'Simplify $\\sqrt[4]{b^{6}}$ and $\\sqrt[3]{8}$.',
+  );
+  const html = renderMathDocument('Simplify ⁴√(b⁶).', { color: '#111111', fontSize: 17, lineHeight: 26 });
+  expect(html).toContain('class="root"');
+  expect(html).toContain('class="msupsub"');
+});
+
+test('renders the full Grade 10 mathematics notation contract', () => {
+  const html = renderMathDocument(
+    'Use $\\frac{a_{1}^{2}}{\\sqrt[3]{b}}$, $0.\\overline{36}$, $\\angle ABC=45^{\\circ}$, and $f:A\\to B$.',
+    { color: '#111111', fontSize: 17, lineHeight: 26 },
+  );
+  expect(html).toContain('class="mfrac"');
+  expect(html).toContain('class="root"');
+  expect(html).toContain('class="msupsub"');
+  expect(html).toContain('overline');
+  expect(html).toContain('math-structured');
+  expect(html).toContain('STIX Two Math');
+  expect(html).not.toContain('<span class="math-fallback">');
+});
 
 test('splits inline and display equations without exposing delimiters', () => {
   const segments = splitMathSegments(
@@ -23,14 +92,14 @@ test('splits inline and display equations without exposing delimiters', () => {
   ]);
 });
 
-test('renders Unit 3 physics notation as offline MathML', () => {
+test('renders Unit 3 physics notation as offline KaTeX HTML', () => {
   const html = renderMathDocument(
     'Displacement is $\\Delta x=x_f-x_i$, so $\\Delta x=5-(-12)=+17\\,\\mathrm{m}$.',
     { color: '#111111', fontSize: 16, lineHeight: 24 },
   );
-  expect(html).toContain('<math');
+  expect(html).toContain('class="katex"');
   expect(html).toContain('Δ');
-  expect(html).toContain('<msub>');
+  expect(html).toContain('class="msupsub"');
   expect(html).not.toContain('$\\Delta');
   expect(html).not.toContain('https://');
   expect(html).toContain(mathDocumentId('Displacement is $\\Delta x=x_f-x_i$, so $\\Delta x=5-(-12)=+17\\,\\mathrm{m}$.'));
@@ -67,7 +136,7 @@ test('repairs double-escaped and nested Unit 2 measurement notation', () => {
     'Force uses $\\mathrm{kg\\,$\\mathrm{m/s}$^2}$.',
     { color: '#111111', fontSize: 16, lineHeight: 24 },
   );
-  expect(html).toContain('<math');
+  expect(html).toContain('class="katex"');
   expect(html).not.toContain('<span class="math-fallback">');
 });
 

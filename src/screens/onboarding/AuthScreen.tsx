@@ -10,6 +10,12 @@ import { useApp } from '@/context/AppContext';
 import { ui } from '@/data/theme';
 import { api } from '@/services/api';
 import type { RootStackParamList } from '@/navigation/types';
+import {
+  ETHIOPIAN_PHONE_ERROR,
+  ethiopianPhoneInputHasError,
+  normalizeEthiopianPhone,
+  sanitizeEthiopianPhoneInput,
+} from '@/utils/phone';
 import { userFacingError } from '@/utils/userFacingError';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Auth'>;
@@ -26,6 +32,7 @@ export function AuthScreen({ navigation }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const isLogin = mode === 'login';
+  const phoneHasError = !isLogin && ethiopianPhoneInputHasError(phone);
 
   const submit = async () => {
     if (busy) return;
@@ -33,16 +40,16 @@ export function AuthScreen({ navigation }: Props) {
     if (!isLogin && name.trim().length < 2) return setError('Please enter your name.');
     if (!/^\S+@\S+\.\S+$/.test(email.trim())) return setError('Enter a valid email address.');
     if (password.length < 8) return setError('Password must be at least 8 characters.');
-    const phoneDigits = phone.replace(/\D/g, '');
-    if (!isLogin && phone.trim() && (phoneDigits.length < 7 || phoneDigits.length > 15)) {
-      return setError('Enter a valid phone number or leave it empty.');
-    }
+    const normalizedPhone = isLogin ? '' : normalizeEthiopianPhone(phone);
+    if (!isLogin && normalizedPhone === null) return setError(ETHIOPIAN_PHONE_ERROR);
     setBusy(true);
     try {
       if (isLogin) await login(email, password);
-      else await signup(name, email, password, phone);
+      else await signup(name, email, password, normalizedPhone ?? '');
     } catch (caught) {
-      setError(userFacingError(caught, isLogin ? 'login' : 'signup'));
+      const safeMessage = userFacingError(caught, isLogin ? 'login' : 'signup');
+      if (__DEV__) console.warn(`[auth] ${isLogin ? 'login' : 'signup'} failed: ${safeMessage}`);
+      setError(safeMessage);
     } finally {
       setBusy(false);
     }
@@ -114,6 +121,9 @@ export function AuthScreen({ navigation }: Props) {
               autoCapitalize="none"
               keyboardType="email-address"
               autoComplete="email"
+              textContentType="username"
+              importantForAutofill="yes"
+              autoCorrect={false}
               mode="outlined"
               left={<TextInput.Icon icon="email-outline" />}
               outlineStyle={styles.inputOutline}
@@ -121,16 +131,20 @@ export function AuthScreen({ navigation }: Props) {
             {!isLogin ? (
               <>
                 <TextInput
-                  label="Phone number (optional)"
+                  label="Phone number"
                   value={phone}
-                  onChangeText={setPhone}
+                  onChangeText={(value) => setPhone(sanitizeEthiopianPhoneInput(value))}
                   keyboardType="phone-pad"
                   autoComplete="tel"
+                  textContentType="telephoneNumber"
+                  importantForAutofill="yes"
+                  maxLength={10}
                   mode="outlined"
+                  error={phoneHasError}
                   left={<TextInput.Icon icon="phone-outline" />}
                   outlineStyle={styles.inputOutline}
                 />
-                <Text variant="bodySmall" style={styles.passwordHint}>Useful for payment matching and account support.</Text>
+                {phoneHasError ? <Text variant="bodySmall" style={[styles.fieldError, { color: theme.colors.error }]}>{ETHIOPIAN_PHONE_ERROR}</Text> : null}
               </>
             ) : null}
             <TextInput
@@ -140,6 +154,9 @@ export function AuthScreen({ navigation }: Props) {
               secureTextEntry={secure}
               autoCapitalize="none"
               autoComplete={isLogin ? 'current-password' : 'new-password'}
+              textContentType={isLogin ? 'password' : 'newPassword'}
+              importantForAutofill="yes"
+              autoCorrect={false}
               mode="outlined"
               left={<TextInput.Icon icon="lock-outline" />}
               right={<TextInput.Icon icon={secure ? 'eye-outline' : 'eye-off-outline'} onPress={() => setSecure((value) => !value)} />}
@@ -228,6 +245,7 @@ const styles = StyleSheet.create({
   formTitle: { fontWeight: '900', letterSpacing: -0.4 },
   inputOutline: { borderRadius: ui.radius.sm },
   passwordHint: { marginTop: -8, marginLeft: 4, opacity: 0.58 },
+  fieldError: { marginTop: -9, marginLeft: 14 },
   forgotButton: { alignSelf: 'flex-end', marginTop: -8 },
   errorBox: { flexDirection: 'row', alignItems: 'center', gap: 9, padding: 11, borderRadius: ui.radius.sm },
   errorText: { flex: 1, lineHeight: 18 },

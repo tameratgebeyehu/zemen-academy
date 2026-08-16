@@ -498,7 +498,10 @@ function createBlankQuestionImportSheet() {
   sheet.setColumnWidths(8, 7, 240);
   sheet.setColumnWidth(15, 110);
   sheet.setColumnWidth(16, 220);
-  sheet.getRange(2, 1, 4999, headers.length).setWrap(true).setVerticalAlignment('top');
+  sheet.getRange(2, 1, 4999, headers.length)
+    .setNumberFormat('@')
+    .setWrap(true)
+    .setVerticalAlignment('top');
   sheet.getRange(2, 1, 4999, 1).setDataValidation(
     SpreadsheetApp.newDataValidation().requireValueInList(['9', '10', '11', '12'], true).build()
   );
@@ -513,7 +516,10 @@ function createBlankQuestionImportSheet() {
 }
 
 function questionImportBlobFromSheet_(sheet) {
-  var values = sheet.getDataRange().getDisplayValues();
+  var timezone = sheet.getParent().getSpreadsheetTimeZone() || Session.getScriptTimeZone();
+  var values = sheet.getDataRange().getValues().map(function (row) {
+    return row.map(function (cell) { return questionImportCellText_(cell, timezone); });
+  });
   if (values.length < 2) throw new Error('The active sheet has no question rows.');
   var csv = values.map(function (row) {
     return row.map(function (cell) {
@@ -767,6 +773,7 @@ function importQuestionCsv(form) {
     try {
       for (var offset = 0; offset < values.length; offset += 500) {
         var chunk = values.slice(offset, offset + 500);
+        formatQuestionTextColumns_(questionsSheet, headers, startRow + offset, chunk.length);
         questionsSheet.getRange(startRow + offset, 1, chunk.length, headers.length).setValues(chunk);
         written += chunk.length;
       }
@@ -851,15 +858,15 @@ function publishUnitQuestions(subjectId, unitId) {
       if (String(row[columns.unitId]) !== unitId || String(row[columns.status]) === 'archived') return;
       matching += 1;
       var item = {
-        externalId: String(row[columns.externalId] || '').trim(),
-        topic: String(row[columns.topic] || '').trim(),
-        question: String(row[columns.question] || '').trim(),
-        optionA: String(row[columns.optionA] || '').trim(),
-        optionB: String(row[columns.optionB] || '').trim(),
-        optionC: String(row[columns.optionC] || '').trim(),
-        optionD: String(row[columns.optionD] || '').trim(),
+        externalId: questionImportCellText_(row[columns.externalId], spreadsheet.getSpreadsheetTimeZone()),
+        topic: questionImportCellText_(row[columns.topic], spreadsheet.getSpreadsheetTimeZone()),
+        question: questionImportCellText_(row[columns.question], spreadsheet.getSpreadsheetTimeZone()),
+        optionA: questionImportCellText_(row[columns.optionA], spreadsheet.getSpreadsheetTimeZone()),
+        optionB: questionImportCellText_(row[columns.optionB], spreadsheet.getSpreadsheetTimeZone()),
+        optionC: questionImportCellText_(row[columns.optionC], spreadsheet.getSpreadsheetTimeZone()),
+        optionD: questionImportCellText_(row[columns.optionD], spreadsheet.getSpreadsheetTimeZone()),
         correctAnswer: String(row[columns.correctAnswer] || '').trim().toUpperCase(),
-        explanation: String(row[columns.explanation] || '').trim(),
+        explanation: questionImportCellText_(row[columns.explanation], spreadsheet.getSpreadsheetTimeZone()),
         difficulty: String(row[columns.difficulty] || '').trim().toLowerCase(),
         sourceReference: String(row[columns.sourceReference] || '').trim()
       };
@@ -935,6 +942,14 @@ function createUnitPublishedAnnouncement_(subjectId, unit, questionCount, publis
   var stream = grade >= 11 ? clean_(subject.stream, 20) : '';
   var existing = findObject_('Announcements', 'id', announcementId);
   if (existing) {
+    if (existing._row && (!existing.targetId || !existing.actionType)) {
+      updateObjectAtRow_('Announcements', existing._row, {
+        kind: 'academy',
+        actionType: 'quiz',
+        targetId: clean_(unit.id, 120),
+        actionLabel: 'Open quiz'
+      });
+    }
     enqueueAnnouncementPush_(announcementId);
     return { id: announcementId, created: false, grade: grade, stream: stream };
   }
@@ -946,7 +961,11 @@ function createUnitPublishedAnnouncement_(subjectId, unit, questionCount, publis
     audienceGrade: grade,
     audienceStream: stream,
     publishedAt: publishedAt,
-    status: 'active'
+    status: 'active',
+    kind: 'academy',
+    actionType: 'quiz',
+    targetId: clean_(unit.id, 120),
+    actionLabel: 'Open quiz'
   });
   enqueueAnnouncementPush_(announcementId);
   return { id: announcementId, created: true, grade: grade, stream: stream };
@@ -1240,6 +1259,106 @@ function normalizeQuestionText_(value) {
 function safeSheetText_(value) {
   var text = String(value || '').replace(/\u0000/g, '');
   return /^[=+@]/.test(text) ? "'" + text : text;
+}
+
+function questionImportCellText_(value, timezone) {
+  if (Object.prototype.toString.call(value) === '[object Date]' && !isNaN(value.getTime())) {
+    return Utilities.formatDate(value, timezone || Session.getScriptTimeZone(), 'd/M');
+  }
+  return String(value || '').trim();
+}
+
+function repairAllQuestionFractionDates() {
+  var master = SpreadsheetApp.getActiveSpreadsheet();
+  if (!master) throw new Error('Open the Zemen Academy master spreadsheet first.');
+  var spreadsheets = [master];
+  var seen = {};
+  seen[master.getId()] = true;
+  contentSourceRecords_().filter(function (source) {
+    return source.status === 'active' && source.spreadsheetId;
+  }).forEach(function (source) {
+    var id = String(source.spreadsheetId);
+    if (seen[id]) return;
+    spreadsheets.push(SpreadsheetApp.openById(id));
+    seen[id] = true;
+  });
+
+  var repairedCells = 0;
+  var updatedUnits = 0;
+  spreadsheets.forEach(function (spreadsheet) {
+    var result = repairQuestionFractionDatesInSpreadsheet_(spreadsheet);
+    repairedCells += result.repairedCells;
+    updatedUnits += result.updatedUnits;
+  });
+  invalidateCatalogCaches_();
+  SpreadsheetApp.flush();
+  SpreadsheetApp.getUi().alert(
+    'Fraction repair complete',
+    repairedCells + ' date-formatted question cell(s) repaired across '
+      + spreadsheets.length + ' spreadsheet(s).\n'
+      + updatedUnits + ' affected unit version(s) were incremented.\n\n'
+      + 'Students should sync content or update the downloaded unit.',
+    SpreadsheetApp.getUi().ButtonSet.OK
+  );
+  return { repairedCells: repairedCells, updatedUnits: updatedUnits, spreadsheets: spreadsheets.length };
+}
+
+function repairQuestionFractionDatesInSpreadsheet_(spreadsheet) {
+  var sheet = spreadsheet.getSheetByName('Questions');
+  if (!sheet || sheet.getLastRow() < 2) return { repairedCells: 0, updatedUnits: 0 };
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var rowCount = sheet.getLastRow() - 1;
+  var unitColumn = headers.indexOf('unitId');
+  if (unitColumn < 0) throw new Error(spreadsheet.getName() + ': Questions is missing unitId.');
+  var unitIds = sheet.getRange(2, unitColumn + 1, rowCount, 1).getDisplayValues();
+  var affectedUnits = {};
+  var repairedCells = 0;
+  ['question', 'optionA', 'optionB', 'optionC', 'optionD', 'explanation'].forEach(function (header) {
+    var column = headers.indexOf(header);
+    if (column < 0) return;
+    var range = sheet.getRange(2, column + 1, rowCount, 1);
+    var values = range.getValues();
+    var changed = false;
+    values.forEach(function (row, index) {
+      var value = row[0];
+      if (Object.prototype.toString.call(value) !== '[object Date]' || isNaN(value.getTime())) return;
+      row[0] = Utilities.formatDate(value, spreadsheet.getSpreadsheetTimeZone(), 'd/M');
+      affectedUnits[String(unitIds[index][0])] = true;
+      repairedCells += 1;
+      changed = true;
+    });
+    range.setNumberFormat('@');
+    if (changed) range.setValues(values);
+  });
+
+  var affectedIds = Object.keys(affectedUnits).filter(Boolean);
+  if (!affectedIds.length) return { repairedCells: repairedCells, updatedUnits: 0 };
+  var unitsSheet = spreadsheet.getSheetByName('Units');
+  if (!unitsSheet || unitsSheet.getLastRow() < 2) {
+    throw new Error(spreadsheet.getName() + ': affected questions exist but Units is missing.');
+  }
+  var unitHeaders = unitsSheet.getRange(1, 1, 1, unitsSheet.getLastColumn()).getValues()[0];
+  var idColumn = unitHeaders.indexOf('id');
+  var versionColumn = unitHeaders.indexOf('version');
+  var updatedAtColumn = unitHeaders.indexOf('updatedAt');
+  if (idColumn < 0 || versionColumn < 0 || updatedAtColumn < 0) {
+    throw new Error(spreadsheet.getName() + ': Units is missing id, version, or updatedAt.');
+  }
+  var unitRowCount = unitsSheet.getLastRow() - 1;
+  var rows = unitsSheet.getRange(2, 1, unitRowCount, unitHeaders.length).getValues();
+  var affectedLookup = {};
+  affectedIds.forEach(function (id) { affectedLookup[id] = true; });
+  var updatedUnits = 0;
+  var now = new Date().toISOString();
+  rows.forEach(function (row) {
+    if (!affectedLookup[String(row[idColumn])]) return;
+    row[versionColumn] = Math.max(1, Number(row[versionColumn]) || 1) + 1;
+    row[updatedAtColumn] = now;
+    updatedUnits += 1;
+  });
+  unitsSheet.getRange(2, 1, unitRowCount, unitHeaders.length).setValues(rows);
+  rebuildQuestionIndexForSpreadsheet_(spreadsheet);
+  return { repairedCells: repairedCells, updatedUnits: updatedUnits };
 }
 
 function nextQuestionId_(unitId, order, existingIds) {

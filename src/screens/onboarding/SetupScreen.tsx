@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
-import { KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
-import { Button, Icon, Text, TextInput, useTheme } from 'react-native-paper';
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
+import { Button, Chip, Icon, Text, useTheme } from 'react-native-paper';
 
 import { BrandMark, SelectionCard, StepProgress } from '@/components/FirstRun';
 import { NetworkActivity } from '@/components/NetworkActivity';
@@ -8,10 +8,11 @@ import { Screen } from '@/components/Screen';
 import { useApp } from '@/context/AppContext';
 import { ui } from '@/data/theme';
 import { scheduleDailyReminder } from '@/services/notifications';
-import type { Grade, Language, Stream } from '@/types';
+import type { Grade, Stream } from '@/types';
+import { ETHIOPIAN_STUDY_TIME_OPTIONS, formatEthiopianTime, isValidLocalTime } from '@/utils/ethiopianTime';
 import { userFacingError } from '@/utils/userFacingError';
 
-type SetupStep = 'language' | 'grade' | 'stream' | 'reminder';
+type SetupStep = 'grade' | 'stream' | 'reminder';
 
 const gradeOptions: Array<{ value: Grade; icon: string; detail: string }> = [
   { value: 9, icon: 'numeric-9-box-outline', detail: 'Build your foundation' },
@@ -21,18 +22,13 @@ const gradeOptions: Array<{ value: Grade; icon: string; detail: string }> = [
 ];
 
 const reminderPresets = [
-  { value: '06:30', title: 'Before school', detail: '6:30 AM', icon: 'weather-sunset-up' },
-  { value: '17:00', title: 'After school', detail: '5:00 PM', icon: 'book-clock-outline' },
-  { value: '19:00', title: 'Evening focus', detail: '7:00 PM', icon: 'weather-sunset-down' },
-  { value: '20:30', title: 'Night review', detail: '8:30 PM', icon: 'weather-night' },
+  { value: '07:00', title: 'Morning review', icon: 'weather-sunset-up' },
+  { value: '13:00', title: 'Afternoon study', icon: 'white-balance-sunny' },
+  { value: '17:00', title: 'After school', icon: 'book-clock-outline' },
+  { value: '19:00', title: 'Evening focus', icon: 'weather-sunset-down' },
 ] as const;
 
 const stepCopy: Record<SetupStep, { eyebrow: string; title: string; body: string }> = {
-  language: {
-    eyebrow: 'YOUR EXPERIENCE',
-    title: 'Choose your language',
-    body: 'Select the language you want to use across lessons, quizzes, and navigation.',
-  },
   grade: {
     eyebrow: 'YOUR LEARNING LEVEL',
     title: 'Which grade are you in?',
@@ -46,14 +42,13 @@ const stepCopy: Record<SetupStep, { eyebrow: string; title: string; body: string
   reminder: {
     eyebrow: 'YOUR STUDY ROUTINE',
     title: 'When should we remind you?',
-    body: 'A consistent study time makes it easier to build momentum. You can change this later.',
+    body: 'Choose a reminder using the Ethiopian clock. You can change it later.',
   },
 };
 
 export function SetupScreen() {
   const { state, completeProfile } = useApp();
   const theme = useTheme();
-  const [language, setLanguage] = useState<Language>(state.preferences.language);
   const [grade, setGrade] = useState<Grade>(state.preferences.grade);
   const [stream, setStream] = useState<Stream>(state.preferences.stream ?? 'Natural');
   const [reminderTime, setReminderTime] = useState(state.preferences.reminderTime);
@@ -62,13 +57,13 @@ export function SetupScreen() {
   const [error, setError] = useState('');
 
   const steps = useMemo<SetupStep[]>(
-    () => grade >= 11 ? ['language', 'grade', 'stream', 'reminder'] : ['language', 'grade', 'reminder'],
+    () => grade >= 11 ? ['grade', 'stream', 'reminder'] : ['grade', 'reminder'],
     [grade],
   );
-  const step = steps[stepIndex] ?? 'language';
+  const step = steps[stepIndex] ?? 'grade';
   const copy = stepCopy[step];
   const finalStep = stepIndex === steps.length - 1;
-  const validTime = /^([01]\d|2[0-3]):[0-5]\d$/.test(reminderTime);
+  const validTime = isValidLocalTime(reminderTime);
 
   const next = async () => {
     if (busy) return;
@@ -78,13 +73,13 @@ export function SetupScreen() {
       return;
     }
     if (!validTime) {
-      setError('Enter a valid 24-hour time, for example 19:00.');
+      setError('Choose a valid Ethiopian reminder time.');
       return;
     }
     setBusy(true);
     try {
       await scheduleDailyReminder(reminderTime).catch(() => false);
-      await completeProfile({ grade, stream: grade >= 11 ? stream : undefined, language, reminderTime });
+      await completeProfile({ grade, stream: grade >= 11 ? stream : undefined, language: 'en', reminderTime });
     } catch (caught) {
       setError(userFacingError(caught, 'profile'));
     } finally {
@@ -117,25 +112,6 @@ export function SetupScreen() {
         </View>
 
         <View style={styles.choices}>
-          {step === 'language' ? (
-            <>
-              <SelectionCard
-                icon="alphabetical-variant"
-                title="English"
-                description="Use the app in English"
-                selected={language === 'en'}
-                onPress={() => setLanguage('en')}
-              />
-              <SelectionCard
-                icon="translate"
-                title="አማርኛ"
-                description="መተግበሪያውን በአማርኛ ይጠቀሙ"
-                selected={language === 'am'}
-                onPress={() => setLanguage('am')}
-              />
-            </>
-          ) : null}
-
           {step === 'grade' ? (
             <View style={styles.gradeGrid}>
               {gradeOptions.map((option) => (
@@ -190,7 +166,7 @@ export function SetupScreen() {
                     key={option.value}
                     icon={option.icon}
                     title={option.title}
-                    description={option.detail}
+                    description={`${formatEthiopianTime(option.value)} · Ethiopian time`}
                     selected={reminderTime === option.value}
                     onPress={() => setReminderTime(option.value)}
                     style={styles.reminderCard}
@@ -199,20 +175,21 @@ export function SetupScreen() {
               </View>
               <View style={styles.customTime}>
                 <View style={styles.customHeading}>
-                  <Text variant="titleSmall" style={styles.bold}>Prefer another time?</Text>
-                  <Text variant="bodySmall" style={styles.muted}>Use 24-hour format</Text>
+                  <Text variant="titleSmall" style={styles.bold}>More times</Text>
+                  <Text variant="bodySmall" style={styles.muted}>Ethiopian clock</Text>
                 </View>
-                <TextInput
-                  mode="outlined"
-                  label="Custom time (HH:MM)"
-                  value={reminderTime}
-                  onChangeText={setReminderTime}
-                  keyboardType="numbers-and-punctuation"
-                  maxLength={5}
-                  left={<TextInput.Icon icon="clock-edit-outline" />}
-                  outlineStyle={styles.inputOutline}
-                  error={!validTime}
-                />
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.timeOptions}>
+                  {ETHIOPIAN_STUDY_TIME_OPTIONS.map((option) => (
+                    <Chip
+                      key={option.value}
+                      selected={reminderTime === option.value}
+                      showSelectedCheck
+                      onPress={() => { setReminderTime(option.value); setError(''); }}
+                    >
+                      {option.label}
+                    </Chip>
+                  ))}
+                </ScrollView>
               </View>
             </>
           ) : null}
@@ -277,7 +254,7 @@ const styles = StyleSheet.create({
   customHeading: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   bold: { fontWeight: '800' },
   muted: { opacity: 0.62 },
-  inputOutline: { borderRadius: ui.radius.sm },
+  timeOptions: { gap: 8, paddingRight: 18 },
   errorBox: { flexDirection: 'row', alignItems: 'center', gap: 9, padding: 11, borderRadius: ui.radius.sm },
   actions: { flexDirection: 'row', gap: 10, marginTop: 'auto' },
   secondaryButton: { minHeight: 54 },

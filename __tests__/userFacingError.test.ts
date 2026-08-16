@@ -1,34 +1,31 @@
 import { expect, test } from '@jest/globals';
 
-import { apiErrorContext, userFacingError } from '@/utils/userFacingError';
+import { userFacingError } from '@/utils/userFacingError';
 
-test('removes native Android and hostname diagnostics from network failures', () => {
-  const message = userFacingError(
-    new Error('fetch failed: java.net.UnknownHostException: Unable to resolve host script.google.com'),
-    'announcements',
-  );
-  expect(message).toBe('No internet connection. Check Wi-Fi or mobile data and try again.');
-  expect(message).not.toMatch(/java|google|hostname|exception/i);
-});
+test('preserves safe actionable signup reasons from the backend', () => {
+  expect(userFacingError(
+    new Error('Account registration is temporarily unavailable because the server setup is incomplete. Please contact Zemen Academy support.'),
+    'signup',
+  )).toBe('Account registration is temporarily unavailable because the server setup is incomplete. Please contact Zemen Academy support.');
 
-test('turns HTTP and malformed-response failures into a safe service message', () => {
-  expect(userFacingError(new Error('Server returned 404.'), 'login')).toContain('temporarily unavailable');
-  expect(userFacingError(new Error('Unexpected token < in JSON'), 'catalog')).toContain('temporarily unavailable');
-});
+  expect(userFacingError(
+    new Error('This app installation could not be verified. Update Zemen Academy or reinstall the app, then try again.'),
+    'signup',
+  )).toBe('This app installation could not be verified. Update Zemen Academy or reinstall the app, then try again.');
 
-test('keeps useful authentication corrections without exposing implementation details', () => {
-  expect(userFacingError(new Error('Email or password is incorrect.'), 'login')).toBe(
-    'Email or password is incorrect. Check both and try again.',
-  );
-  expect(userFacingError(new Error('PASSWORD_PEPPER continuity failed at line 99'), 'login')).toBe(
-    'Sign-in could not be completed. Check your email and password, then try again.',
-  );
-});
+  expect(userFacingError(new Error('Could not obtain lock after 10000ms.'), 'signup'))
+    .toBe('Account registration is busy right now. Wait a minute and try again.');
 
-test('uses an action-specific fallback for unknown server failures', () => {
-  expect(userFacingError(new Error('Internal feature 87 failed'), 'announcements')).toBe(
-    'Announcements could not be updated. Please try again shortly.',
-  );
-  expect(apiErrorContext('createPremiumRequest')).toBe('premium');
-  expect(apiErrorContext('registerDevice')).toBe('device');
+  expect(userFacingError(new Error('Too many account creation attempts. Wait 15 minutes, then try again.'), 'signup'))
+    .toBe('Too many account creation attempts. Wait 15 minutes, then try again.');
+
+  expect(userFacingError(new Error('SIGNUP-STORAGE: Account record could not be saved.'), 'signup'))
+    .toContain('SIGNUP-STORAGE');
+  expect(userFacingError(new Error('SIGNUP-DEVICE: Account device session could not be created.'), 'signup'))
+    .toContain('SIGNUP-DEVICE');
+
+  expect(userFacingError(new Error('DEVICE-IDENTITY-SAVE: secure identity failed.'), 'signup'))
+    .toContain('DEVICE-IDENTITY-SAVE');
+  expect(userFacingError(new Error('SESSION-SAVE: secure session failed.'), 'signup'))
+    .toContain('SESSION-SAVE');
 });

@@ -1,4 +1,4 @@
-import type { QuizAttempt, Subject, Unit } from '@/types';
+import type { PastPaper, QuizAttempt, Subject, Unit } from '@/types';
 import { scoreForAttempt } from '@/utils/quiz';
 
 export interface ProgressSummary {
@@ -97,25 +97,29 @@ export function progressBySubject(
   attempts: QuizAttempt[],
   units: Unit[],
   subjects: Subject[],
+  pastPapers: PastPaper[] = [],
 ): SubjectProgress[] {
   const unitsById = new Map(units.map((unit) => [unit.id, unit]));
+  const papersById = new Map(pastPapers.map((paper) => [paper.id, paper]));
   const subjectsById = new Map(subjects.map((subject) => [subject.id, subject]));
+  const paperSubjectsById = new Map(pastPapers.map((paper) => [paper.subjectId, paper]));
   const grouped = new Map<string, number[]>();
 
   attempts.filter(countsAsCompletedAttempt).forEach((attempt) => {
-    const subjectId = unitsById.get(attempt.unitId)?.subjectId;
-    if (!subjectId || !subjectsById.has(subjectId)) return;
+    const subjectId = unitsById.get(attempt.unitId)?.subjectId ?? papersById.get(attempt.unitId)?.subjectId;
+    if (!subjectId || (!subjectsById.has(subjectId) && !paperSubjectsById.has(subjectId))) return;
     const scores = grouped.get(subjectId) ?? [];
     scores.push(scoreForAttempt(attempt).percentage);
     grouped.set(subjectId, scores);
   });
 
   return [...grouped.entries()].map(([subjectId, scores]) => {
-    const subject = subjectsById.get(subjectId)!;
+    const subject = subjectsById.get(subjectId);
+    const paperSubject = paperSubjectsById.get(subjectId);
     return {
       subjectId,
-      name: subject.name,
-      icon: subject.icon,
+      name: subject?.name ?? paperSubject?.subjectName ?? 'Entrance exam',
+      icon: subject?.icon ?? paperSubject?.subjectIcon ?? 'clipboard-text-outline',
       attempts: scores.length,
       averageScore: Math.round(scores.reduce((total, score) => total + score, 0) / scores.length),
       bestScore: Math.max(...scores),

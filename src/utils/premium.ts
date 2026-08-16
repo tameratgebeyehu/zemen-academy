@@ -27,3 +27,12 @@ export function projectedPremiumUntil(
   const base = Number.isFinite(currentUntilTime) && currentUntilTime > now ? currentUntilTime : now;
   return new Date(base + Math.max(1, Math.floor(durationDays)) * 24 * 60 * 60_000).toISOString();
 }
+
+export function premiumDaysRemaining(
+  until: string | null | undefined,
+  now = Date.now(),
+): number | null {
+  const untilTime = until ? new Date(until).getTime() : Number.NaN;
+  if (!Number.isFinite(untilTime)) return null;
+  return Math.max(0, Math.ceil((untilTime - now) / 86_400_000));
+}

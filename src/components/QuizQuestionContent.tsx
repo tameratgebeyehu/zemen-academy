@@ -1,11 +1,12 @@
-import { memo, useCallback, useMemo } from 'react';
-import { StyleSheet, useWindowDimensions, type StyleProp, type ViewStyle } from 'react-native';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 import { useTheme } from 'react-native-paper';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 
 import type { AnswerIndex, Question } from '@/types';
 import {
-  renderQuizPlayerDocument,
+  createQuizPlayerUpdateScript,
+  renderQuizPlayerShell,
   renderQuizReviewDocument,
   type QuizHtmlColors,
 } from '@/utils/quizHtml';
@@ -31,10 +32,10 @@ type QuizQuestionContentProps = SharedProps & (
 
 function QuizQuestionContentComponent(props: QuizQuestionContentProps) {
   const theme = useTheme();
-  const window = useWindowDimensions();
   const { variant, question, answer } = props;
   const revealAnswer = variant === 'player' ? props.revealAnswer : false;
   const locked = variant === 'player' ? props.locked : true;
+  const webViewRef = useRef<WebView>(null);
   const colors = useMemo<QuizHtmlColors>(() => ({
     surface: theme.colors.surface,
     surfaceVariant: theme.colors.surfaceVariant,
@@ -50,29 +51,55 @@ function QuizQuestionContentComponent(props: QuizQuestionContentProps) {
     onErrorContainer: theme.colors.onErrorContainer,
   }), [theme.colors]);
 
-  const html = useMemo(() => variant === 'player'
-    ? renderQuizPlayerDocument({
-      question,
-      selected: answer,
-      revealAnswer,
-      locked,
-      colors,
-    })
-    : renderQuizReviewDocument({
+  const playerShellHtml = useMemo(() => renderQuizPlayerShell(colors), [colors]);
+  const reviewHtml = useMemo(() => variant === 'review'
+    ? renderQuizReviewDocument({
       question,
       answer,
       colors,
-    }), [answer, colors, locked, question, revealAnswer, variant]);
+    })
+    : '', [answer, colors, question, variant]);
+  const html = variant === 'player' ? playerShellHtml : reviewHtml;
   const source = useMemo(() => ({ html }), [html]);
+  const playerUpdateScript = useMemo(() => variant === 'player'
+    ? createQuizPlayerUpdateScript({ question, selected: answer, revealAnswer, locked })
+    : '', [answer, locked, question, revealAnswer, variant]);
+  const estimatedReviewHeight = useMemo(() => {
+    const answerLength = answer === null ? 7 : question.options[answer].length;
+    const correctLength = answer === question.correctAnswer ? 0 : question.options[question.correctAnswer].length;
+    const contentLength = question.prompt.length + answerLength + correctLength + question.explanation.length;
+    return Math.min(900, Math.max(250, 185 + Math.ceil(contentLength / 34) * 22));
+  }, [answer, question]);
+  const [reviewHeight, setReviewHeight] = useState(estimatedReviewHeight);
+
+  useEffect(() => {
+    if (variant === 'review') setReviewHeight(estimatedReviewHeight);
+  }, [estimatedReviewHeight, question.id, variant]);
+
+  useEffect(() => {
+    if (variant === 'player') webViewRef.current?.injectJavaScript(playerUpdateScript);
+  }, [playerUpdateScript, variant]);
 
   const onMessage = useCallback((event: WebViewMessageEvent) => {
-    if (props.variant !== 'player') return;
     try {
       const payload = JSON.parse(event.nativeEvent.data) as {
         type?: unknown;
         questionId?: unknown;
         answer?: unknown;
+        height?: unknown;
       };
+      if (
+        props.variant === 'review'
+        && payload.type === 'height'
+        && payload.questionId === props.question.id
+        && typeof payload.height === 'number'
+        && Number.isFinite(payload.height)
+      ) {
+        const measured = Math.min(1400, Math.max(180, Math.ceil(payload.height) + 2));
+        setReviewHeight((current) => Math.abs(current - measured) > 1 ? measured : current);
+        return;
+      }
+      if (props.variant !== 'player') return;
       if (
         payload.type === 'select'
         && payload.questionId === props.question.id
@@ -88,11 +115,9 @@ function QuizQuestionContentComponent(props: QuizQuestionContentProps) {
     }
   }, [props]);
 
-  const reviewHeight = Math.min(580, Math.max(410, Math.round(window.height * 0.62)));
-
   return (
     <WebView
-      key={`${props.variant}-${props.question.id}`}
+      ref={webViewRef}
       originWhitelist={['about:blank']}
       source={source}
       style={[
@@ -101,19 +126,21 @@ function QuizQuestionContentComponent(props: QuizQuestionContentProps) {
         props.style,
       ]}
       containerStyle={styles.container}
-      javaScriptEnabled={props.variant === 'player'}
+      javaScriptEnabled
       domStorageEnabled={false}
-      cacheEnabled={false}
-      scrollEnabled
-      nestedScrollEnabled
+      cacheEnabled
+      scrollEnabled={props.variant === 'player'}
+      nestedScrollEnabled={props.variant === 'player'}
       bounces={false}
       overScrollMode="never"
       showsHorizontalScrollIndicator={false}
       showsVerticalScrollIndicator={false}
       setSupportMultipleWindows={false}
       textZoom={100}
+      onLoadEnd={() => {
+        if (variant === 'player') webViewRef.current?.injectJavaScript(playerUpdateScript);
+      }}
       onMessage={onMessage}
-      accessibilityLabel={props.variant === 'player' ? 'Quiz question and answer choices' : 'Answer review'}
     />
   );
 }

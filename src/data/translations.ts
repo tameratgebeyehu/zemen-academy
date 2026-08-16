@@ -13,7 +13,7 @@ const messages = {
     settings: 'Settings', appearance: 'Appearance', system: 'System', light: 'Light', dark: 'Dark',
     about: 'About', logout: 'Logout', storage: 'Storage used',
     delete: 'Delete', noDownloads: 'No downloads yet', correct: 'Correct', wrong: 'Wrong', skipped: 'Skipped',
-    score: 'Score', reviewAnswers: 'Review answers', next: 'Next', previous: 'Previous', submit: 'Submit exam',
+    score: 'Score', reviewAnswers: 'Review answers', next: 'Next', previous: 'Previous', submit: 'Submit',
     acceptRules: 'I understand and accept the exam rules', noResults: 'No results found',
   },
   am: {
@@ -28,7 +28,7 @@ const messages = {
     settings: 'ቅንብሮች', appearance: 'ገጽታ', system: 'የስርዓቱ', light: 'ብርሃን', dark: 'ጨለማ',
     about: 'ስለ እኛ', logout: 'ውጣ', storage: 'የተጠቀመው ማከማቻ',
     delete: 'ሰርዝ', noDownloads: 'እስካሁን የወረደ የለም', correct: 'ትክክል', wrong: 'ስህተት', skipped: 'የታለፈ',
-    score: 'ውጤት', reviewAnswers: 'መልሶችን ይመልከቱ', next: 'ቀጣይ', previous: 'ቀዳሚ', submit: 'ፈተናውን ጨርስ',
+    score: 'ውጤት', reviewAnswers: 'መልሶችን ይመልከቱ', next: 'ቀጣይ', previous: 'ቀዳሚ', submit: 'ጨርስ',
     acceptRules: 'የፈተናውን ህጎች ተረድቼ ተቀብያለሁ', noResults: 'ውጤት አልተገኘም',
   },
 } as const;

@@ -4,9 +4,12 @@ import { StyleSheet, View } from 'react-native';
 import { Button, Card, Checkbox, Icon, Text, TouchableRipple, useTheme } from 'react-native-paper';
 
 import { Screen } from '@/components/Screen';
+import { PREMIUM_ACCESS_BUTTON_LABEL } from '@/config';
 import { useApp } from '@/context/AppContext';
 import { heroPalette, ui } from '@/data/theme';
 import type { RootStackParamList } from '@/navigation/types';
+import { canAccessPaper } from '@/utils/access';
+import { formatDurationWords } from '@/utils/quiz';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ExamRules'>;
 
@@ -49,14 +52,18 @@ export function ExamRulesScreen({ route, navigation }: Props) {
   const hero = heroPalette(theme.dark);
   const [accepted, setAccepted] = useState(false);
   const questions = questionsForUnit(route.params.unitId);
-  const downloaded = state.unitDownloads.some((item) => item.unit.id === route.params.unitId);
+  const isPastPaper = route.params.contentType === 'past-paper';
+  const downloaded = isPastPaper
+    ? state.paperDownloads.some((item) => item.paper.id === route.params.unitId && item.questions.length > 0)
+    : state.unitDownloads.some((item) => item.unit.id === route.params.unitId);
   const isExam = route.params.mode === 'exam';
   const modeName = isExam ? t('examMode') : t('instantMode');
   const questionCount = questions.length;
   const unit = state.catalog.units.find((item) => item.id === route.params.unitId);
+  const paper = state.catalog.pastPapers.find((item) => item.id === route.params.unitId);
 
-  if (unit && !isUnitUnlocked(unit)) {
-    return <Screen><Text variant="headlineSmall" style={styles.title}>Premium required</Text><Text variant="bodyLarge" style={styles.centerMuted}>Your Premium access is required before this attempt can start.</Text><Button mode="contained" icon="crown-outline" contentStyle={styles.button} onPress={() => navigation.navigate('Premium')}>View Premium plans</Button></Screen>;
+  if ((unit && !isUnitUnlocked(unit)) || (paper && !canAccessPaper(state.user, paper))) {
+    return <Screen><Text variant="headlineSmall" style={styles.title}>Premium required</Text><Text variant="bodyLarge" style={styles.centerMuted}>Your Premium access is required before this attempt can start.</Text><Button mode="contained" icon="crown-outline" contentStyle={styles.button} onPress={() => navigation.navigate('Premium')}>{PREMIUM_ACCESS_BUTTON_LABEL}</Button></Screen>;
   }
 
   return (
@@ -66,7 +73,7 @@ export function ExamRulesScreen({ route, navigation }: Props) {
           <Icon source="shield-check-outline" size={38} color={theme.colors.primary} />
         </View>
         <Text variant="labelLarge" style={[styles.eyebrow, { color: theme.colors.primary }]}>BEFORE YOU BEGIN</Text>
-        <Text variant="headlineMedium" style={styles.title}>Attempt rules</Text>
+        <Text variant="headlineMedium" style={styles.title}>{isPastPaper ? 'Entrance-exam rules' : 'Attempt rules'}</Text>
         <Text variant="bodyMedium" style={styles.centerMuted}>
           These rules protect fair assessment and apply to the entire attempt.
         </Text>
@@ -78,7 +85,7 @@ export function ExamRulesScreen({ route, navigation }: Props) {
             <Text variant="labelMedium" style={[styles.summaryEyebrow, { color: hero.muted }]}>SELECTED MODE</Text>
             <Text variant="titleLarge" style={[styles.summaryTitle, { color: hero.foreground }]}>{modeName}</Text>
             <Text variant="bodySmall" style={{ color: hero.muted }}>
-              {questionCount} questions • {questionCount} minutes total
+              {questionCount} questions • {formatDurationWords(questionCount * 60)} total
             </Text>
           </View>
           <View style={[styles.accessBadge, { backgroundColor: hero.overlay }]}>

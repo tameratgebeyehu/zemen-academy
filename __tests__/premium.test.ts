@@ -1,7 +1,7 @@
 import { expect, test } from '@jest/globals';
 
 import type { PremiumEntitlement, User } from '@/types';
-import { applyPremiumEntitlement, projectedPremiumUntil } from '@/utils/premium';
+import { applyPremiumEntitlement, premiumDaysRemaining, projectedPremiumUntil } from '@/utils/premium';
 
 const freeUser: User = {
   id: 'student-1',
@@ -47,4 +47,12 @@ test('projects renewals from an unexpired membership instead of losing remaining
   const now = Date.parse('2026-08-01T00:00:00.000Z');
   expect(projectedPremiumUntil('2026-08-21T00:00:00.000Z', 90, now)).toBe('2026-11-19T00:00:00.000Z');
   expect(projectedPremiumUntil('2026-07-01T00:00:00.000Z', 30, now)).toBe('2026-08-31T00:00:00.000Z');
+});
+
+test('reports remaining subscription days and clamps expired access to zero', () => {
+  const now = Date.parse('2026-08-01T00:00:00.000Z');
+  expect(premiumDaysRemaining('2026-08-01T12:00:00.000Z', now)).toBe(1);
+  expect(premiumDaysRemaining('2026-08-04T00:00:00.000Z', now)).toBe(3);
+  expect(premiumDaysRemaining('2026-07-31T00:00:00.000Z', now)).toBe(0);
+  expect(premiumDaysRemaining(null, now)).toBeNull();
 });

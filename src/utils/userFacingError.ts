@@ -6,6 +6,7 @@ export type ErrorContext =
   | 'catalog'
   | 'quiz'
   | 'paper'
+  | 'notes'
   | 'premium'
   | 'device'
   | 'profile'
@@ -21,6 +22,7 @@ const CONTEXT_MESSAGES: Record<ErrorContext, string> = {
   catalog: 'Learning content could not be updated. Your saved content is still available.',
   quiz: 'This quiz could not be opened right now. Please try again.',
   paper: 'This past paper could not be opened right now. Please try again.',
+  notes: 'Study notes could not be updated. Your saved notes are still available.',
   premium: 'The Premium request could not be completed. Check the details and try again.',
   device: 'This device could not be verified right now. Please try again.',
   profile: 'Your changes could not be saved. Please try again.',
@@ -53,18 +55,51 @@ export function userFacingError(error: unknown, context: ErrorContext = 'general
   if (/email or password is incorrect/.test(lower)) {
     return 'Email or password is incorrect. Check both and try again.';
   }
+  if (/too many signup attempts|too many account creation attempts/.test(lower)) {
+    return 'Too many account creation attempts. Wait 15 minutes, then try again.';
+  }
   if (/too many failed attempts|too many attempts/.test(lower)) {
-    return 'Too many attempts. Wait a few minutes, then try again.';
+    return 'Too many attempts. Wait 15 minutes, then try again.';
   }
   if (/account already exists/.test(lower)) {
     return 'An account already exists for this email. Try signing in instead.';
   }
   if (/valid email/.test(lower)) return 'Enter a valid email address.';
-  if (/valid phone/.test(lower)) return 'Enter a valid phone number or leave it empty.';
+  if (/ethiopian mobile|valid phone/.test(lower)) {
+    return 'Enter a valid Ethiopian mobile number.';
+  }
   if (/password must be/.test(lower)) return 'Use a password with at least 8 characters.';
+  if (/account registration.*server setup is incomplete|device security is not installed|server security is not initialized|run setupzemenacademy/.test(lower)) {
+    return 'Account registration is temporarily unavailable because the server setup is incomplete. Please contact Zemen Academy support.';
+  }
+  if (/signup-storage|account details could not be saved|account record could not be saved/.test(lower)) {
+    return 'Your account details could not be saved. Try once more. If it continues, contact Zemen Academy support with code SIGNUP-STORAGE.';
+  }
+  if (/signup-device|device security could not finish creating your account|account device session could not be created/.test(lower)) {
+    return 'Device security could not finish creating your account. Contact Zemen Academy support with code SIGNUP-DEVICE.';
+  }
+  if (/device-identity-read|could not read its secure app identity/.test(lower)) {
+    return 'This phone could not read its secure app identity. Restart the phone or reinstall Zemen Academy. Code: DEVICE-IDENTITY-READ.';
+  }
+  if (/device-identity-save|could not save its secure app identity/.test(lower)) {
+    return 'This phone could not save its secure app identity. Restart the phone or reinstall Zemen Academy. Code: DEVICE-IDENTITY-SAVE.';
+  }
+  if (/session-save|could not securely save the sign-in session/.test(lower)) {
+    return 'Your account was created, but this phone could not securely save the sign-in session. Restart the phone, then sign in with the same email and password. Code: SESSION-SAVE.';
+  }
+  if (/invalid installation identifier|app installation could not be verified/.test(lower)) {
+    return 'This app installation could not be verified. Update Zemen Academy or reinstall the app, then try again.';
+  }
+  if (/invalid device (type|platform)|device could not be verified by this version/.test(lower)) {
+    return 'This device could not be verified by this version of Zemen Academy. Update the app and try again.';
+  }
+  if (/could not obtain lock|service invoked too many times|account registration is busy|\bquota\b/.test(lower)) {
+    return 'Account registration is busy right now. Wait a minute and try again.';
+  }
   if (/device already belongs/.test(lower)) return 'This device is already connected to another Zemen Academy account.';
   if (/device replacement is temporarily unavailable/.test(lower)) return raw;
   if (/device is linked to another account/.test(lower)) return 'This device is connected to another account. Sign in to that account or contact support.';
+  if (/(installation|device) was released from the account/.test(lower)) return 'This device was released from the account. Use the replacement device or contact support.';
   if (/session expired/.test(lower)) return 'Your session expired. Sign in again to continue.';
   if (/premium access is required/.test(lower)) return 'Zemen Premium is required to open this content.';
   if (/premium subscription is already active/.test(lower)) return 'Your Premium subscription is already active.';
@@ -84,6 +119,7 @@ export function apiErrorContext(action: string): ErrorContext {
   if (action === 'catalog') return 'catalog';
   if (action === 'questions') return 'quiz';
   if (action === 'paper') return 'paper';
+  if (action === 'notes' || action === 'note') return 'notes';
   if (/Premium/.test(action) || action === 'premiumOverview' || action === 'premiumStatus') return 'premium';
   if (action === 'registerDevice' || action === 'replaceDevice') return 'device';
   if (action === 'updateProfile') return 'profile';

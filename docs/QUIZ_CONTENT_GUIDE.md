@@ -50,6 +50,12 @@ exactly match the master subject ID.
 Open the provisioned subject file's `Questions` tab. Add one row per question. Every
 question requires four non-empty choices and an explanation.
 
+For mathematics, put every formula inside `$...$` and use LaTeX commands. Write
+fractions as `$\frac{3}{11}$`, radicals as `$\sqrt{5}$`, and powers as `$x^{2}$`.
+Never use a bare fraction such as `3/11` in a spreadsheet cell because Excel or
+Google Sheets may convert it into a calendar date. Question and option columns must
+remain formatted as plain text.
+
 | Column | Example |
 | --- | --- |
 | id | `g12-natural-physics-u1-q001` |

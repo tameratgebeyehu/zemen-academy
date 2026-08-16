@@ -1,6 +1,11 @@
 import { expect, test } from '@jest/globals';
 
-import { deviceCategoryFromExpoType, devicePolicyRequiresAttention, deviceRegistrationIsFresh } from '@/utils/devicePolicy';
+import {
+  deviceCategoryFromExpoType,
+  devicePolicyRequiresAttention,
+  devicePolicyRevokesLocalContent,
+  deviceRegistrationIsFresh,
+} from '@/utils/devicePolicy';
 
 test('maps Expo device types to the supported policy categories', () => {
   expect(deviceCategoryFromExpoType(1)).toBe('phone');
@@ -28,4 +33,10 @@ test('requires a device check for a new account and blocks a rejected installati
 test('keeps guests and legacy accepted observations usable during rollout', () => {
   expect(devicePolicyRequiresAttention(true, 'guest-1', undefined, undefined)).toBe(false);
   expect(devicePolicyRequiresAttention(false, 'student-1', 'student-1', {})).toBe(false);
+});
+
+test('purges offline learning only when this installation was explicitly revoked', () => {
+  expect(devicePolicyRevokesLocalContent({ currentDeviceStatus: 'revoked', blockedReason: 'device-released' })).toBe(true);
+  expect(devicePolicyRevokesLocalContent({ currentDeviceStatus: 'blocked', blockedReason: 'device-limit' })).toBe(false);
+  expect(devicePolicyRevokesLocalContent({ currentDeviceStatus: 'active', blockedReason: null })).toBe(false);
 });
